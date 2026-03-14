@@ -1,29 +1,70 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm } from "fs/promises";
+import { rm, mkdir, writeFile, cp } from "fs/promises";
+import path from "path";
 
 async function buildVercel() {
-  await rm("dist", { recursive: true, force: true });
+  // Clean previous output
+  await rm(".vercel/output", { recursive: true, force: true });
 
+  // Step 1: Build Vite frontend to .vercel/output/static
   console.log("building client...");
-  await viteBuild();
+  process.env.VITE_OUTPUT_DIR = ".vercel/output/static";
+  await viteBuild({
+    build: {
+      outDir: path.resolve(".vercel/output/static"),
+    },
+  });
 
-  console.log("building api/index.js for Vercel (fully bundled)...");
+  // Step 2: Build API handler to .vercel/output/functions/api/index.func/
+  const funcDir = ".vercel/output/functions/api/index.func";
+  await mkdir(funcDir, { recursive: true });
+
+  console.log("building api function for Vercel Build Output API...");
   await esbuild({
     entryPoints: ["server/vercel-handler.ts"],
     platform: "node",
     bundle: true,
     format: "cjs",
-    outfile: "api/index.js",
-    // Bundle everything inline — no external dependencies needed at runtime
+    outfile: `${funcDir}/index.js`,
     external: [],
     minify: false,
     logLevel: "info",
-    // Handle native modules that can't be bundled
     loader: { ".node": "file" },
   });
 
+  // Write .vc-config.json for the function
+  await writeFile(
+    `${funcDir}/.vc-config.json`,
+    JSON.stringify({ runtime: "nodejs20.x", handler: "index.js", launcherType: "Nodejs" }, null, 2)
+  );
+
+  // Step 3: Write .vercel/output/config.json with routing rules
+  const config = {
+    version: 3,
+    routes: [
+      // API requests go to the serverless function
+      {
+        src: "/api/(.*)",
+        dest: "/api/index",
+      },
+      // Static file handling
+      { handle: "filesystem" },
+      // SPA fallback
+      {
+        src: "/(.*)",
+        dest: "/index.html",
+      },
+    ],
+  };
+
+  await writeFile(".vercel/output/config.json", JSON.stringify(config, null, 2));
+
   console.log("Vercel build complete!");
+  console.log("Output structure:");
+  console.log("  .vercel/output/static/ — frontend");
+  console.log("  .vercel/output/functions/api/index.func/ — API serverless function");
+  console.log("  .vercel/output/config.json — routing config");
 }
 
 buildVercel().catch((err) => {
