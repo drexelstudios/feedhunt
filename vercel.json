@@ -4,7 +4,6 @@
   "outputDirectory": "dist/public",
   "installCommand": "npm ci",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
