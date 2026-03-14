@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 
-// Use __PORT_5000__ which deploy_website rewrites to the correct proxy path
-export const API_BASE = "__PORT_5000__";
+// Empty base — API calls use relative paths (works on Vercel and local dev)
+export const API_BASE = "";
 
 export async function apiRequest(
   method: string,
