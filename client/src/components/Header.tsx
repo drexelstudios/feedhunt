@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useTheme } from "@/components/ThemeProvider";
+import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Plus, RefreshCw } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sun, Moon, Plus, RefreshCw, LogOut, User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import type { Feed } from "@shared/schema";
@@ -12,13 +20,13 @@ interface HeaderProps {
 
 export default function Header({ onAddFeed }: HeaderProps) {
   const { theme, toggle } = useTheme();
+  const { user, signOut } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: feeds = [] } = useQuery<Feed[]>({ queryKey: ["/api/feeds"] });
 
   const handleRefreshAll = async () => {
     setRefreshing(true);
-    // Invalidate all feed item queries
     await Promise.all(
       feeds.map((f) =>
         queryClient.invalidateQueries({ queryKey: [`/api/feeds/${f.id}/items`] })
@@ -26,6 +34,11 @@ export default function Header({ onAddFeed }: HeaderProps) {
     );
     setTimeout(() => setRefreshing(false), 800);
   };
+
+  // Get initials from email for avatar
+  const initials = user?.email
+    ? user.email.slice(0, 2).toUpperCase()
+    : "??";
 
   return (
     <header
@@ -49,7 +62,6 @@ export default function Header({ onAddFeed }: HeaderProps) {
             aria-label="Feedboard logo"
             style={{ color: "hsl(var(--primary))" }}
           >
-            {/* Stylized RSS / grid icon */}
             <rect x="3" y="3" width="9" height="9" rx="2" fill="currentColor" opacity="0.9"/>
             <rect x="16" y="3" width="9" height="9" rx="2" fill="currentColor" opacity="0.5"/>
             <rect x="3" y="16" width="9" height="9" rx="2" fill="currentColor" opacity="0.5"/>
@@ -102,6 +114,50 @@ export default function Header({ onAddFeed }: HeaderProps) {
             <Plus size={14} />
             Add Feed
           </Button>
+
+          {/* User menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                data-testid="button-user-menu"
+                className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all hover:opacity-80"
+                style={{
+                  background: "hsl(var(--primary))",
+                  color: "hsl(var(--primary-foreground))",
+                  fontFamily: "var(--font-display)",
+                }}
+                title={user?.email}
+              >
+                {initials}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-3 py-2">
+                <p
+                  className="text-xs font-medium truncate"
+                  style={{ color: "hsl(var(--foreground))" }}
+                >
+                  {user?.email}
+                </p>
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  Signed in
+                </p>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                data-testid="button-sign-out"
+                onClick={signOut}
+                className="gap-2 cursor-pointer"
+                style={{ color: "hsl(var(--destructive))" }}
+              >
+                <LogOut size={14} />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
