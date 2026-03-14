@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Rss } from "lucide-react";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "forgot";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
@@ -25,13 +25,21 @@ export default function AuthPage() {
       if (error) {
         toast({ title: "Login failed", description: error.message, variant: "destructive" });
       }
-      // On success, AuthProvider's onAuthStateChange fires → App re-renders → redirect
-    } else {
+    } else if (mode === "signup") {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) {
         toast({ title: "Sign up failed", description: error.message, variant: "destructive" });
       } else {
         setSignupDone(true);
+      }
+    } else if (mode === "forgot") {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else {
+        setSignupDone(true); // reuse the "check your email" screen
       }
     }
 
@@ -122,7 +130,7 @@ export default function AuthPage() {
                 color: "hsl(var(--foreground))",
               }}
             >
-              {mode === "login" ? "Welcome back" : "Create account"}
+              {mode === "login" ? "Welcome back" : mode === "signup" ? "Create account" : "Reset password"}
             </h1>
             <p
               className="mb-6"
@@ -130,7 +138,9 @@ export default function AuthPage() {
             >
               {mode === "login"
                 ? "Sign in to your Feedboard dashboard"
-                : "Start building your personal RSS dashboard"}
+                : mode === "signup"
+                ? "Start building your personal RSS dashboard"
+                : "Enter your email and we'll send you a reset link"}
             </p>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -150,21 +160,35 @@ export default function AuthPage() {
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="auth-password" style={{ fontSize: "var(--text-sm)" }}>
-                  Password
-                </Label>
-                <Input
-                  id="auth-password"
-                  data-testid="input-password"
-                  type="password"
-                  placeholder={mode === "signup" ? "At least 6 characters" : "••••••••"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={mode === "signup" ? 6 : undefined}
-                />
-              </div>
+              {mode !== "forgot" && (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="auth-password" style={{ fontSize: "var(--text-sm)" }}>
+                      Password
+                    </Label>
+                    {mode === "login" && (
+                      <button
+                        type="button"
+                        onClick={() => setMode("forgot")}
+                        className="text-xs"
+                        style={{ color: "hsl(var(--muted-foreground))" }}
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="auth-password"
+                    data-testid="input-password"
+                    type="password"
+                    placeholder={mode === "signup" ? "At least 6 characters" : "••••••••"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={mode === "signup" ? 6 : undefined}
+                  />
+                </div>
+              )}
 
               <Button
                 data-testid="button-auth-submit"
@@ -175,7 +199,7 @@ export default function AuthPage() {
                 {loading ? (
                   <Loader2 size={16} className="animate-spin mr-2" />
                 ) : null}
-                {mode === "login" ? "Sign in" : "Create account"}
+                {mode === "login" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}
               </Button>
             </form>
 
@@ -183,17 +207,30 @@ export default function AuthPage() {
               className="mt-5 pt-5 border-t text-center"
               style={{ borderColor: "hsl(var(--border))" }}
             >
-              <span style={{ fontSize: "var(--text-sm)", color: "hsl(var(--muted-foreground))" }}>
-                {mode === "login" ? "Don't have an account? " : "Already have an account? "}
-              </span>
-              <button
-                data-testid="button-auth-switch"
-                onClick={() => setMode(mode === "login" ? "signup" : "login")}
-                className="font-medium"
-                style={{ fontSize: "var(--text-sm)", color: "hsl(var(--primary))" }}
-              >
-                {mode === "login" ? "Sign up" : "Sign in"}
-              </button>
+              {mode === "forgot" ? (
+                <button
+                  data-testid="button-auth-switch"
+                  onClick={() => setMode("login")}
+                  className="font-medium"
+                  style={{ fontSize: "var(--text-sm)", color: "hsl(var(--primary))" }}
+                >
+                  Back to sign in
+                </button>
+              ) : (
+                <>
+                  <span style={{ fontSize: "var(--text-sm)", color: "hsl(var(--muted-foreground))" }}>
+                    {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+                  </span>
+                  <button
+                    data-testid="button-auth-switch"
+                    onClick={() => setMode(mode === "login" ? "signup" : "login")}
+                    className="font-medium"
+                    style={{ fontSize: "var(--text-sm)", color: "hsl(var(--primary))" }}
+                  >
+                    {mode === "login" ? "Sign up" : "Sign in"}
+                  </button>
+                </>
+              )}
             </div>
           </>
         )}
