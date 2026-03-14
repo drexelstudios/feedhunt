@@ -188,9 +188,19 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json(cat);
   });
 
+  app.patch("/api/categories/:id", requireAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: "name required" });
+    const cat = await storage.renameCategory(id, name.trim(), req.userId!);
+    if (!cat) return res.status(404).json({ error: "Not found" });
+    res.json(cat);
+  });
+
   app.delete("/api/categories/:id", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
-    const ok = await storage.deleteCategory(id, req.userId!);
+    const { replaceName } = req.body; // optional: move feeds to another category
+    const ok = await storage.deleteCategory(id, req.userId!, replaceName);
     if (!ok) return res.status(404).json({ error: "Not found" });
     res.json({ success: true });
   });
