@@ -98,7 +98,7 @@ export default function AddFeedDialog({ open, onOpenChange, categories }: AddFee
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md" data-testid="dialog-add-feed">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-add-feed">
         <DialogHeader>
           <DialogTitle
             style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
@@ -156,20 +156,20 @@ export default function AddFeedDialog({ open, onOpenChange, categories }: AddFee
 
           {preview && (
             <div
-              className="rounded-lg p-3"
+              className="rounded-lg p-3 overflow-hidden"
               style={{
                 background: "hsl(var(--accent))",
                 border: "1px solid hsl(var(--border))",
               }}
               data-testid="feed-preview"
             >
-              <div className="flex items-start gap-2 mb-2">
+              <div className="flex items-start gap-2 mb-2 min-w-0">
                 <Rss size={14} style={{ color: "hsl(var(--primary))", marginTop: 2, flexShrink: 0 }} />
-                <div>
-                  <p className="text-sm font-semibold leading-tight">{preview.title}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold leading-tight truncate">{preview.title}</p>
                   {preview.description && (
-                    <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-                      {preview.description.slice(0, 80)}
+                    <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "hsl(var(--muted-foreground))" }}>
+                      {preview.description.slice(0, 120)}
                     </p>
                   )}
                 </div>
