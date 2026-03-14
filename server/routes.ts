@@ -1,6 +1,7 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import Parser from "rss-parser";
+import { createClient } from "@supabase/supabase-js";
 import { storage } from "./storage";
 import { insertFeedSchema, insertCategorySchema } from "../shared/schema";
 import { z } from "zod";
@@ -50,22 +51,63 @@ function extractFirstImage(html: string): string {
   return match ? match[1] : "";
 }
 
+// ── Auth middleware ────────────────────────────────────────────────────────────
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
+
+// Extend Express Request to carry userId
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string;
+      userEmail?: string;
+    }
+  }
+}
+
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = authHeader.slice(7);
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+  req.userId = data.user.id;
+  req.userEmail = data.user.email;
+  next();
+}
+
 export function registerRoutes(httpServer: Server, app: Express) {
+  // ── Seed endpoint (called once after first login) ──────────────────────────
+  app.post("/api/auth/seed", requireAuth, async (req, res) => {
+    try {
+      await storage.seedDefaultData(req.userId!);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Feeds CRUD ─────────────────────────────────────────────────────────────
-  app.get("/api/feeds", async (_req, res) => {
-    const feeds = await storage.getFeeds();
+  app.get("/api/feeds", requireAuth, async (req, res) => {
+    const feeds = await storage.getFeeds(req.userId!);
     res.json(feeds);
   });
 
-  app.post("/api/feeds", async (req, res) => {
+  app.post("/api/feeds", requireAuth, async (req, res) => {
     const parsed = insertFeedSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const feed = await storage.createFeed(parsed.data);
+    const feed = await storage.createFeed(parsed.data, req.userId!);
     res.json(feed);
   });
 
   // Preview must come before /:id routes so Express doesn't treat "preview" as an id
-  app.post("/api/feeds/preview", async (req, res) => {
+  app.post("/api/feeds/preview", requireAuth, async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "url required" });
     try {
@@ -84,32 +126,32 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Reorder must also come before /:id routes
-  app.post("/api/feeds/reorder", async (req, res) => {
+  app.post("/api/feeds/reorder", requireAuth, async (req, res) => {
     const { ids } = req.body;
     if (!Array.isArray(ids)) return res.status(400).json({ error: "ids required" });
-    await storage.reorderFeeds(ids);
+    await storage.reorderFeeds(ids, req.userId!);
     res.json({ success: true });
   });
 
-  app.patch("/api/feeds/:id", async (req, res) => {
+  app.patch("/api/feeds/:id", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
-    const feed = await storage.updateFeed(id, req.body);
+    const feed = await storage.updateFeed(id, req.body, req.userId!);
     if (!feed) return res.status(404).json({ error: "Not found" });
     res.json(feed);
   });
 
-  app.delete("/api/feeds/:id", async (req, res) => {
+  app.delete("/api/feeds/:id", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     feedCache.delete(id);
-    const ok = await storage.deleteFeed(id);
+    const ok = await storage.deleteFeed(id, req.userId!);
     if (!ok) return res.status(404).json({ error: "Not found" });
     res.json({ success: true });
   });
 
   // ── Feed Items (with caching) ───────────────────────────────────────────────
-  app.get("/api/feeds/:id/items", async (req, res) => {
+  app.get("/api/feeds/:id/items", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
-    const feed = await storage.getFeed(id);
+    const feed = await storage.getFeed(id, req.userId!);
     if (!feed) return res.status(404).json({ error: "Not found" });
 
     const cached = feedCache.get(id);
@@ -123,9 +165,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Refresh a feed's cache
-  app.post("/api/feeds/:id/refresh", async (req, res) => {
+  app.post("/api/feeds/:id/refresh", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
-    const feed = await storage.getFeed(id);
+    const feed = await storage.getFeed(id, req.userId!);
     if (!feed) return res.status(404).json({ error: "Not found" });
     feedCache.delete(id);
     const items = await fetchFeedItems(feed.url);
@@ -134,21 +176,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── Categories ─────────────────────────────────────────────────────────────
-  app.get("/api/categories", async (_req, res) => {
-    const cats = await storage.getCategories();
+  app.get("/api/categories", requireAuth, async (_req, res) => {
+    const cats = await storage.getCategories(_req.userId!);
     res.json(cats);
   });
 
-  app.post("/api/categories", async (req, res) => {
+  app.post("/api/categories", requireAuth, async (req, res) => {
     const parsed = insertCategorySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const cat = await storage.createCategory(parsed.data);
+    const cat = await storage.createCategory(parsed.data, req.userId!);
     res.json(cat);
   });
 
-  app.delete("/api/categories/:id", async (req, res) => {
+  app.delete("/api/categories/:id", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
-    const ok = await storage.deleteCategory(id);
+    const ok = await storage.deleteCategory(id, req.userId!);
     if (!ok) return res.status(404).json({ error: "Not found" });
     res.json({ success: true });
   });
