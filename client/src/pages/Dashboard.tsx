@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   DndContext,
@@ -15,16 +15,34 @@ import {
   rectSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Feed, Category } from "@shared/schema";
-import { useTheme } from "@/components/ThemeProvider";
 import FeedWidget from "@/components/FeedWidget";
 import AddFeedDialog from "@/components/AddFeedDialog";
 import Header from "@/components/Header";
 import PerplexityAttribution from "@/components/PerplexityAttribution";
 import { Button } from "@/components/ui/button";
-import { Plus, LayoutGrid, Columns, ChevronDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, LayoutGrid, Columns, MoreHorizontal, Pencil, Trash2, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 type Layout = "grid" | "columns";
 
@@ -33,6 +51,18 @@ export default function Dashboard() {
   const [layout, setLayout] = useState<Layout>("grid");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [showAddFeed, setShowAddFeed] = useState(false);
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  // New tab inline input
+  const [showNewTab, setShowNewTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const newTabInputRef = useRef<HTMLInputElement>(null);
+  // Delete confirm
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+
+  const { toast } = useToast();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -46,15 +76,63 @@ export default function Dashboard() {
     queryKey: ["/api/categories"],
   });
 
+  // ── Mutations ────────────────────────────────────────────────────────────────
   const reorderMutation = useMutation({
     mutationFn: (ids: number[]) =>
       apiRequest("POST", "/api/feeds/reorder", { ids }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/feeds"] }),
   });
 
-  const handleDragStart = (e: DragStartEvent) => {
-    setActiveId(Number(e.active.id));
-  };
+  const createCategoryMutation = useMutation({
+    mutationFn: (name: string) =>
+      apiRequest("POST", "/api/categories", { name, position: categories.length }),
+    onSuccess: async (res) => {
+      const cat = await (res as Response).json();
+      await queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setActiveCategory(cat.name);
+      setShowNewTab(false);
+      setNewTabName("");
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const renameCategoryMutation = useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) =>
+      apiRequest("PATCH", `/api/categories/${id}`, { name }),
+    onSuccess: async (res, { name }) => {
+      const cat = await (res as Response).json();
+      await queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
+      setActiveCategory(cat.name);
+      setRenamingId(null);
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("DELETE", `/api/categories/${id}`, { replaceName: "General" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
+      setActiveCategory("All");
+      setDeletingCategory(null);
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingId !== null) renameInputRef.current?.focus();
+  }, [renamingId]);
+
+  // Focus new tab input when it appears
+  useEffect(() => {
+    if (showNewTab) newTabInputRef.current?.focus();
+  }, [showNewTab]);
+
+  // ── Drag handlers ────────────────────────────────────────────────────────────
+  const handleDragStart = (e: DragStartEvent) => setActiveId(Number(e.active.id));
 
   const handleDragEnd = useCallback(
     (e: DragEndEvent) => {
@@ -71,8 +149,10 @@ export default function Dashboard() {
     [feeds, reorderMutation]
   );
 
-  // Build category tabs
-  const allCategories = ["All", ...Array.from(new Set(feeds.map((f) => f.category).filter(Boolean)))];
+  // ── Tab helpers ──────────────────────────────────────────────────────────────
+  // Use categories from DB (user-managed) for the tab list
+  const categoryNames = categories.map((c) => c.name);
+  const allTabs = ["All", ...categoryNames];
 
   const filteredFeeds =
     activeCategory === "All"
@@ -80,6 +160,21 @@ export default function Dashboard() {
       : feeds.filter((f) => f.category === activeCategory);
 
   const activeItem = activeId ? feeds.find((f) => f.id === activeId) : null;
+
+  const startRename = (cat: Category) => {
+    setRenamingId(cat.id);
+    setRenameValue(cat.name);
+  };
+
+  const commitRename = () => {
+    if (!renamingId || !renameValue.trim()) { setRenamingId(null); return; }
+    renameCategoryMutation.mutate({ id: renamingId, name: renameValue.trim() });
+  };
+
+  const commitNewTab = () => {
+    if (!newTabName.trim()) { setShowNewTab(false); return; }
+    createCategoryMutation.mutate(newTabName.trim());
+  };
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "hsl(var(--background))" }}>
@@ -98,27 +193,162 @@ export default function Dashboard() {
           style={{ maxWidth: "var(--content-wide)", margin: "0 auto" }}
         >
           {/* Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto py-2 scrollbar-hide" style={{ scrollbarWidth: "none" }}>
-            {allCategories.map((cat) => (
-              <button
-                key={cat}
-                data-testid={`tab-${cat.toLowerCase()}`}
-                onClick={() => setActiveCategory(cat)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all",
-                  activeCategory === cat
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          <div className="flex items-center gap-1 overflow-x-auto py-2" style={{ scrollbarWidth: "none" }}>
+            {/* "All" tab — never editable */}
+            <button
+              key="All"
+              data-testid="tab-all"
+              onClick={() => setActiveCategory("All")}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all",
+                activeCategory === "All"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+              style={
+                activeCategory === "All"
+                  ? { background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }
+                  : {}
+              }
+            >
+              All
+            </button>
+
+            {/* User-managed category tabs */}
+            {categories.map((cat) => (
+              <div key={cat.id} className="flex items-center group relative">
+                {renamingId === cat.id ? (
+                  // Inline rename input
+                  <div className="flex items-center gap-1 px-1">
+                    <Input
+                      ref={renameInputRef}
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRename();
+                        if (e.key === "Escape") setRenamingId(null);
+                      }}
+                      className="h-6 text-xs px-2 w-24"
+                      style={{ fontSize: "var(--text-xs)" }}
+                    />
+                    <button
+                      onClick={commitRename}
+                      className="p-0.5 rounded"
+                      style={{ color: "hsl(var(--primary))" }}
+                      title="Save"
+                    >
+                      <Check size={12} />
+                    </button>
+                    <button
+                      onClick={() => setRenamingId(null)}
+                      className="p-0.5 rounded"
+                      style={{ color: "hsl(var(--muted-foreground))" }}
+                      title="Cancel"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  // Normal tab with hover menu
+                  <div className="flex items-center">
+                    <button
+                      data-testid={`tab-${cat.name.toLowerCase()}`}
+                      onClick={() => setActiveCategory(cat.name)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all",
+                        activeCategory === cat.name
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                      )}
+                      style={
+                        activeCategory === cat.name
+                          ? { background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }
+                          : {}
+                      }
+                    >
+                      {cat.name}
+                    </button>
+
+                    {/* Context menu trigger — visible on hover */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          data-testid={`tab-menu-${cat.name.toLowerCase()}`}
+                          className="opacity-0 group-hover:opacity-100 ml-0.5 p-0.5 rounded transition-opacity"
+                          style={{ color: "hsl(var(--muted-foreground))" }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreHorizontal size={12} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-36">
+                        <DropdownMenuItem
+                          className="gap-2 cursor-pointer text-xs"
+                          onClick={() => startRename(cat)}
+                        >
+                          <Pencil size={12} />
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="gap-2 cursor-pointer text-xs"
+                          style={{ color: "hsl(var(--destructive))" }}
+                          onClick={() => setDeletingCategory(cat)}
+                        >
+                          <Trash2 size={12} />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 )}
-                style={
-                  activeCategory === cat
-                    ? { background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }
-                    : {}
-                }
-              >
-                {cat}
-              </button>
+              </div>
             ))}
+
+            {/* New tab inline input */}
+            {showNewTab ? (
+              <div className="flex items-center gap-1 px-1">
+                <Input
+                  ref={newTabInputRef}
+                  placeholder="Tab name"
+                  value={newTabName}
+                  onChange={(e) => setNewTabName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitNewTab();
+                    if (e.key === "Escape") { setShowNewTab(false); setNewTabName(""); }
+                  }}
+                  className="h-6 text-xs px-2 w-24"
+                />
+                <button
+                  onClick={commitNewTab}
+                  className="p-0.5 rounded"
+                  style={{ color: "hsl(var(--primary))" }}
+                  title="Create"
+                  disabled={createCategoryMutation.isPending}
+                >
+                  <Check size={12} />
+                </button>
+                <button
+                  onClick={() => { setShowNewTab(false); setNewTabName(""); }}
+                  className="p-0.5 rounded"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                  title="Cancel"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <button
+                data-testid="button-new-tab"
+                onClick={() => setShowNewTab(true)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs whitespace-nowrap transition-all"
+                style={{ color: "hsl(var(--muted-foreground))" }}
+                title="New tab"
+              >
+                <Plus size={12} />
+                New tab
+              </button>
+            )}
           </div>
 
           {/* Layout toggle */}
@@ -164,7 +394,7 @@ export default function Dashboard() {
         {feedsLoading ? (
           <SkeletonGrid />
         ) : filteredFeeds.length === 0 ? (
-          <EmptyState onAdd={() => setShowAddFeed(true)} />
+          <EmptyState onAdd={() => setShowAddFeed(true)} activeCategory={activeCategory} />
         ) : (
           <DndContext
             sensors={sensors}
@@ -233,8 +463,36 @@ export default function Dashboard() {
       <AddFeedDialog
         open={showAddFeed}
         onOpenChange={setShowAddFeed}
-        categories={categories.map((c) => c.name)}
+        categories={categoryNames}
       />
+
+      {/* Delete category confirmation */}
+      <AlertDialog
+        open={!!deletingCategory}
+        onOpenChange={(open) => { if (!open) setDeletingCategory(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle
+              style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
+            >
+              Delete "{deletingCategory?.name}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              All feeds in this tab will be moved to <strong>General</strong>. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingCategory && deleteCategoryMutation.mutate(deletingCategory.id)}
+              style={{ background: "hsl(var(--destructive))", color: "white" }}
+            >
+              Delete tab
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -270,7 +528,7 @@ function SkeletonGrid() {
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({ onAdd, activeCategory }: { onAdd: () => void; activeCategory: string }) {
   return (
     <div
       className="flex flex-col items-center justify-center text-center"
@@ -304,13 +562,15 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
           color: "hsl(var(--foreground))",
         }}
       >
-        No feeds yet
+        {activeCategory === "All" ? "No feeds yet" : `No feeds in "${activeCategory}"`}
       </h2>
       <p
         className="mb-6 max-w-xs"
         style={{ fontSize: "var(--text-sm)", color: "hsl(var(--muted-foreground))" }}
       >
-        Add RSS feeds to start building your personal news dashboard.
+        {activeCategory === "All"
+          ? "Add RSS feeds to start building your personal news dashboard."
+          : `Add a feed and assign it to the "${activeCategory}" category.`}
       </p>
       <Button
         data-testid="empty-add-feed"
@@ -318,7 +578,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         className="gap-2"
       >
         <Plus size={16} />
-        Add your first feed
+        Add {activeCategory === "All" ? "your first feed" : "a feed"}
       </Button>
     </div>
   );
