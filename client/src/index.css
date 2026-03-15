@@ -286,11 +286,10 @@ body {
   overflow: hidden;
 }
 .feed-item {
-  border-bottom: 1px solid hsl(var(--border));
   transition: background var(--transition-interactive);
 }
-.feed-item:last-child {
-  border-bottom: none;
+.feed-item + .feed-item {
+  border-top: 1px solid hsl(var(--border));
 }
 .feed-item a {
   display: block;
@@ -361,9 +360,10 @@ body {
 /* ── Phase 4: Feed item thumbnail ──────────────────────────────────────────── */
 .feed-item-thumb {
   overflow: hidden;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-radius: var(--radius-md);
   max-height: 180px;
   line-height: 0;
+  margin: var(--space-3) var(--space-4) 0;
 }
 .feed-item-thumb img {
   width: 100%;
