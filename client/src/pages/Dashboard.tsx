@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   DndContext,
@@ -35,6 +35,8 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Feed, Category } from "@shared/schema";
 import FeedWidget from "@/components/FeedWidget";
+import type { EnrichedFeedItem } from "@/components/FeedWidget";
+import ReadingPane from "@/components/ReadingPane";
 import AddFeedDialog from "@/components/AddFeedDialog";
 import FeedCreatorDialog from "@/components/FeedCreatorDialog";
 import Header from "@/components/Header";
@@ -67,6 +69,9 @@ export default function Dashboard() {
   const newTabInputRef = useRef<HTMLInputElement>(null);
   // Delete confirm
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+  // Reading pane state (Phase 6)
+  const [selectedItem, setSelectedItem] = useState<EnrichedFeedItem | null>(null);
+  const [isPaneOpen, setIsPaneOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -85,6 +90,35 @@ export default function Dashboard() {
   // On mount, refresh any overdue scraped feeds for this user
   useEffect(() => {
     apiRequest("POST", "/api/scrape/refresh-due").catch(() => {/* silent */});
+  }, []);
+
+  // Reading pane: sessionStorage restore on mount
+  // Restore previously selected item when page is refreshed
+  const { data: allFeeds = [] } = useQuery<Feed[]>({ queryKey: ["/api/feeds"], enabled: false });
+  useEffect(() => {
+    const storedId = sessionStorage.getItem("feedboard:selectedItemId");
+    if (!storedId) return;
+    // We can't restore full item data here without item-meta — pane will load
+    // on next item click. Clear the session key so it doesn't linger.
+    sessionStorage.removeItem("feedboard:selectedItemId");
+  }, []);
+
+  // Persist selected item id to sessionStorage
+  useEffect(() => {
+    if (selectedItem?.itemId) {
+      sessionStorage.setItem("feedboard:selectedItemId", selectedItem.itemId);
+    }
+  }, [selectedItem?.itemId]);
+
+  // Reading pane handlers
+  const handleItemClick = useCallback((item: EnrichedFeedItem) => {
+    setSelectedItem(item);
+    setIsPaneOpen(true);
+  }, []);
+
+  const handlePaneClose = useCallback(() => {
+    setIsPaneOpen(false);
+    sessionStorage.removeItem("feedboard:selectedItemId");
   }, []);
 
   // ── Mutations ────────────────────────────────────────────────────────────────
@@ -192,7 +226,10 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "hsl(var(--background))" }}>
+    <div
+      className={cn("min-h-screen flex flex-col", isPaneOpen && "pane-open")}
+      style={{ background: "hsl(var(--background))" }}
+    >
       <Header onAddFeed={() => setShowAddFeed(true)} onCreateFeed={() => setShowCreateFeed(true)} />
 
       {/* Category tabs + layout toggle */}
@@ -391,55 +428,70 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Main content */}
-      <main
-        className="flex-1 px-4 sm:px-6 py-6"
-        style={{ maxWidth: "var(--content-wide)", margin: "0 auto", width: "100%" }}
-      >
-        {feedsLoading ? (
-          <SkeletonGrid />
-        ) : filteredFeeds.length === 0 ? (
-          <EmptyState onAdd={() => setShowAddFeed(true)} activeCategory={activeCategory} />
-        ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={filteredFeeds.map((f) => f.id)}
-              strategy={rectSortingStrategy}
+      {/* Main content + reading pane overlay */}
+      <div className="dashboard-body">
+        <main
+          className="flex-1 px-4 sm:px-6 py-6"
+          style={{ maxWidth: "var(--content-wide)", margin: "0 auto", width: "100%" }}
+          onClick={(e) => {
+            // Clicking the grid area (not a card) closes the pane
+            if (isPaneOpen && e.target === e.currentTarget) handlePaneClose();
+          }}
+        >
+          {feedsLoading ? (
+            <SkeletonGrid />
+          ) : filteredFeeds.length === 0 ? (
+            <EmptyState onAdd={() => setShowAddFeed(true)} activeCategory={activeCategory} />
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
             >
-              <div
-                className={cn(
-                  columns === 2 ? "feed-masonry-2" :
-                  columns === 4 ? "feed-masonry-4" :
-                  "feed-masonry"
-                )}
+              <SortableContext
+                items={filteredFeeds.map((f) => f.id)}
+                strategy={rectSortingStrategy}
               >
-                {filteredFeeds.map((feed) => (
-                  <FeedWidget
-                    key={feed.id}
-                    feed={feed}
-                    isDragging={activeId === feed.id}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-
-            <DragOverlay>
-              {activeItem ? (
-                <div className="feed-widget dragging" style={{ width: 340, opacity: 0.9 }}>
-                  <div className="widget-header">
-                    <span className="feed-title">{activeItem.title}</span>
-                  </div>
+                <div
+                  className={cn(
+                    columns === 2 ? "feed-masonry-2" :
+                    columns === 4 ? "feed-masonry-4" :
+                    "feed-masonry"
+                  )}
+                >
+                  {filteredFeeds.map((feed) => (
+                    <FeedWidget
+                      key={feed.id}
+                      feed={feed}
+                      isDragging={activeId === feed.id}
+                      selectedItemId={selectedItem?.itemId ?? null}
+                      onItemClick={handleItemClick}
+                    />
+                  ))}
                 </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        )}
-      </main>
+              </SortableContext>
+
+              <DragOverlay>
+                {activeItem ? (
+                  <div className="feed-widget dragging" style={{ width: 340, opacity: 0.9 }}>
+                    <div className="widget-header">
+                      <span className="feed-title">{activeItem.title}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </main>
+
+        {/* Reading pane — overlay/push from right */}
+        <ReadingPane
+          item={selectedItem}
+          isOpen={isPaneOpen}
+          onClose={handlePaneClose}
+        />
+      </div>
 
       {/* Footer */}
       <footer
@@ -589,4 +641,3 @@ function EmptyState({ onAdd, activeCategory }: { onAdd: () => void; activeCatego
     </div>
   );
 }
-

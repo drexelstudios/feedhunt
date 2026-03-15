@@ -21,18 +21,40 @@ import EditFeedDialog from "@/components/EditFeedDialog";
 interface FeedWidgetProps {
   feed: Feed;
   isDragging?: boolean;
+  // Reading pane props (Phase 4/6)
+  selectedItemId?: string | null;
+  onItemClick?: (item: EnrichedFeedItem) => void;
 }
 
-interface FeedItem {
+export interface FeedItem {
   title: string;
   link: string;
   pubDate: string;
   summary: string;
   author: string;
-  thumbnail: string;
+  thumbnail: string | null;
+  guid: string;
 }
 
-export default function FeedWidget({ feed, isDragging }: FeedWidgetProps) {
+// FeedItem enriched with Supabase metadata (id, thumbnail override, etc.)
+export interface EnrichedFeedItem extends FeedItem {
+  itemId: string | null;       // Supabase feed_items.id (UUID) — null until upserted
+  thumbnailUrl: string | null; // From Supabase (may differ from RSS thumbnail)
+  hasBody: boolean;
+  readingTimeMinutes: number | null;
+  feedTitle: string;
+  feedId: number;
+}
+
+// Item metadata map returned by /api/feeds/:id/item-meta
+interface ItemMeta {
+  id: string;
+  thumbnail_url: string | null;
+  has_body: boolean;
+  reading_time_minutes: number | null;
+}
+
+export default function FeedWidget({ feed, isDragging, selectedItemId, onItemClick }: FeedWidgetProps) {
   const [showEdit, setShowEdit] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: isSortableDragging } =
@@ -49,9 +71,19 @@ export default function FeedWidget({ feed, isDragging }: FeedWidgetProps) {
     staleTime: 4 * 60 * 1000,
   });
 
+  // Item metadata from Supabase (stable IDs + thumbnails) — fetched after items load
+  const { data: itemMeta } = useQuery<Record<string, ItemMeta>>({
+    queryKey: [`/api/feeds/${feed.id}/item-meta`],
+    enabled: !!data?.items?.length,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const refreshMutation = useMutation({
     mutationFn: () => apiRequest("POST", `/api/feeds/${feed.id}/refresh`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/feeds/${feed.id}/items`] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/feeds/${feed.id}/items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/feeds/${feed.id}/item-meta`] });
+    },
   });
 
   const toggleCollapseMutation = useMutation({
@@ -68,6 +100,30 @@ export default function FeedWidget({ feed, isDragging }: FeedWidgetProps) {
   const faviconUrl = feed.favicon || getFaviconUrl(feed.url);
   const categoryColor = getCategoryColor(feed.category);
   const items = data?.items || [];
+
+  // Enrich items with Supabase metadata
+  const enrichedItems: EnrichedFeedItem[] = items.map((item) => {
+    const meta = itemMeta?.[item.guid];
+    return {
+      ...item,
+      itemId: meta?.id ?? null,
+      thumbnailUrl: meta?.thumbnail_url ?? item.thumbnail ?? null,
+      hasBody: meta?.has_body ?? false,
+      readingTimeMinutes: meta?.reading_time_minutes ?? null,
+      feedTitle: feed.title,
+      feedId: feed.id,
+    };
+  });
+
+  const handleItemClick = useCallback(
+    (e: React.MouseEvent, item: EnrichedFeedItem) => {
+      if (!onItemClick) return;
+      // Only intercept if we have a reading pane handler
+      e.preventDefault();
+      onItemClick(item);
+    },
+    [onItemClick]
+  );
 
   return (
     <div
@@ -177,27 +233,58 @@ export default function FeedWidget({ feed, isDragging }: FeedWidgetProps) {
             </div>
           ) : (
             <ul className="feed-items">
-              {items.map((item, i) => (
-                <li key={i} className="feed-item">
-                  <a
-                    href={item.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid={`item-link-${feed.id}-${i}`}
+              {enrichedItems.map((item, i) => {
+                const isActive = item.itemId != null && item.itemId === selectedItemId;
+                const thumb = item.thumbnailUrl;
+
+                return (
+                  <li
+                    key={i}
+                    className={cn("feed-item", isActive && "feed-item--active")}
                   >
-                    <div className="feed-item-title">{item.title}</div>
-                    {item.summary && (
-                      <div className="feed-item-summary">{item.summary}</div>
+                    {/* Phase 4: Thumbnail — only render if present, no placeholder */}
+                    {thumb && (
+                      <div className="feed-item-thumb">
+                        <img
+                          src={thumb}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            // Hide container on error — no broken icon, no layout shift
+                            const parent = (e.target as HTMLImageElement).closest(".feed-item-thumb") as HTMLElement | null;
+                            if (parent) parent.style.display = "none";
+                          }}
+                        />
+                      </div>
                     )}
-                    <div className="feed-item-meta">
-                      {item.author && <span>{item.author}</span>}
-                      {item.author && item.pubDate && <span>·</span>}
-                      {item.pubDate && <span>{timeAgo(item.pubDate)}</span>}
-                      <ExternalLink size={9} className="ml-auto opacity-40" />
-                    </div>
-                  </a>
-                </li>
-              ))}
+
+                    <a
+                      href={item.link}
+                      target={onItemClick ? undefined : "_blank"}
+                      rel="noopener noreferrer"
+                      data-testid={`item-link-${feed.id}-${i}`}
+                      onClick={onItemClick ? (e) => handleItemClick(e, item) : undefined}
+                    >
+                      <div className="feed-item-title">{item.title}</div>
+                      {item.summary && (
+                        <div className="feed-item-summary">{item.summary}</div>
+                      )}
+                      <div className="feed-item-meta">
+                        {item.author && <span>{item.author}</span>}
+                        {item.author && item.pubDate && <span>·</span>}
+                        {item.pubDate && <span>{timeAgo(item.pubDate)}</span>}
+                        {item.readingTimeMinutes && (
+                          <>
+                            <span>·</span>
+                            <span>{item.readingTimeMinutes} min read</span>
+                          </>
+                        )}
+                        <ExternalLink size={9} className="ml-auto opacity-40" />
+                      </div>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
 

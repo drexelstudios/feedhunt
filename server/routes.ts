@@ -2,6 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
+// jsdom / readability / dompurify are loaded lazily inside /api/extract only.
+// Top-level imports of these packages crash the Vercel serverless bundle on cold start.
 import { storage } from "./storage";
 import { insertFeedSchema, insertCategorySchema } from "../shared/schema";
 import { z } from "zod";
@@ -59,18 +61,31 @@ async function fetchAndParse(url: string) {
 async function fetchFeedItems(url: string): Promise<any[]> {
   try {
     const feed = await fetchAndParse(url);
-    return (feed.items || []).map((item: any) => ({
-      title: item.title || "Untitled",
-      link: item.link || item.guid || "",
-      pubDate: item.pubDate || item.isoDate || "",
-      summary: stripHtml(item.contentSnippet || item.summary || item.content || ""),
-      author: item.creator || item.author || "",
-      thumbnail:
+    return (feed.items || []).map((item: any) => {
+      // Thumbnail priority order (Phase 2):
+      // 1. <media:content url> or <media:thumbnail url>
+      // 2. <enclosure url type="image/...">
+      // 3. First <img> in description or content:encoded
+      // (og:image skipped — would require extra per-item HTTP fetch)
+      const enclosureImg =
+        item.enclosure?.type?.startsWith("image/") ? item.enclosure.url : null;
+      const thumbnail =
         item.mediaThumbnail?.$?.url ||
         item.mediaContent?.$?.url ||
-        extractFirstImage(item.content || item["content:encoded"] || "") ||
-        "",
-    }));
+        enclosureImg ||
+        extractFirstImage(item.content || item["content:encoded"] || item.description || "") ||
+        null;
+
+      return {
+        title: item.title || "Untitled",
+        link: item.link || item.guid || "",
+        pubDate: item.pubDate || item.isoDate || "",
+        summary: stripHtml(item.contentSnippet || item.summary || item.content || ""),
+        author: item.creator || item.author || "",
+        thumbnail,
+        guid: item.guid || item.link || "",
+      };
+    });
   } catch (e) {
     console.error("RSS fetch error for", url, e);
     return [];
@@ -117,7 +132,62 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// ── feed_items upsert helper (Phase 2) ────────────────────────────────────────
+// Persists RSS items to Supabase so they have stable UUIDs for the reading pane.
+// Called fire-and-forget after every successful RSS fetch.
+async function upsertFeedItems(
+  feedId: number,
+  userId: string,
+  items: any[]
+): Promise<void> {
+  if (!items.length) return;
+  const rows = items.map((item) => ({
+    feed_id: feedId,
+    user_id: userId,
+    guid: item.guid || item.link || item.title,
+    title: item.title || "",
+    link: item.link || "",
+    pub_date: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+    author: item.author || null,
+    summary: item.summary || null,
+    thumbnail_url: item.thumbnail || null,
+    updated_at: new Date().toISOString(),
+  }));
+
+  // Upsert on (feed_id, guid); don't overwrite body_html if already extracted
+  await supabaseAdmin
+    .from("feed_items")
+    .upsert(rows, {
+      onConflict: "feed_id,guid",
+      ignoreDuplicates: false,
+    });
+}
+
 export function registerRoutes(httpServer: Server, app: Express) {
+  // ── Diagnostic: test jsdom/readability in Vercel runtime (no auth) ─────────
+  app.get("/api/extract/ping", async (_req, res) => {
+    const steps: string[] = [];
+    try {
+      steps.push("start");
+      const jsdomMod = require("jsdom");
+      steps.push("jsdom loaded");
+      const { JSDOM } = jsdomMod;
+      const dom = new JSDOM("<html><body><article><p>Hello world test content for readability parsing.</p></article></body></html>", { url: "https://example.com" });
+      steps.push("JSDOM instantiated");
+      const { Readability } = require("@mozilla/readability");
+      steps.push("Readability loaded");
+      const article = new Readability(dom.window.document).parse();
+      steps.push("Readability parsed: " + (article ? article.title || "ok" : "null"));
+      const DOMPurify = require("isomorphic-dompurify").default;
+      steps.push("DOMPurify loaded");
+      const clean = DOMPurify.sanitize("<p>test</p>");
+      steps.push("DOMPurify sanitized: " + clean);
+      res.json({ ok: true, steps });
+    } catch (e: any) {
+      res.json({ ok: false, steps, error: e.message, stack: e.stack?.slice(0, 500) });
+    }
+  });
+
   // ── Seed endpoint (called once after first login) ──────────────────────────
   app.post("/api/auth/seed", requireAuth, async (req, res) => {
     try {
@@ -183,7 +253,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ success: true });
   });
 
-  // ── Feed Items (with caching) ───────────────────────────────────────────────
+  // ── Feed Items (with caching + Supabase persistence) ──────────────────────
   app.get("/api/feeds/:id/items", requireAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     const feed = await storage.getFeed(id, req.userId!);
@@ -194,9 +264,39 @@ export function registerRoutes(httpServer: Server, app: Express) {
       return res.json({ items: cached.items.slice(0, feed.maxItems), cached: true });
     }
 
-    const items = await fetchFeedItems(feed.url);
-    feedCache.set(id, { items, fetchedAt: Date.now() });
-    res.json({ items: items.slice(0, feed.maxItems), cached: false });
+    const rawItems = await fetchFeedItems(feed.url);
+    // Upsert to feed_items for stable IDs and reading pane support
+    // Fire-and-forget so we don't block the response
+    upsertFeedItems(id, req.userId!, rawItems).catch((e) =>
+      console.error("[feed_items upsert error]", e)
+    );
+    feedCache.set(id, { items: rawItems, fetchedAt: Date.now() });
+    res.json({ items: rawItems.slice(0, feed.maxItems), cached: false });
+  });
+
+  // Get persisted item metadata (IDs, thumbnails, body_html status) for a feed
+  // Frontend uses this to enrich card display and pass item_id to /api/extract
+  app.get("/api/feeds/:id/item-meta", requireAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { data, error } = await supabaseAdmin
+      .from("feed_items")
+      .select("id, guid, thumbnail_url, body_html, reading_time_minutes, body_extracted_at")
+      .eq("feed_id", id)
+      .eq("user_id", req.userId)
+      .order("pub_date", { ascending: false })
+      .limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    // Return as a map: guid -> metadata for O(1) lookup on the client
+    const map: Record<string, any> = {};
+    for (const row of data || []) {
+      map[row.guid] = {
+        id: row.id,
+        thumbnail_url: row.thumbnail_url,
+        has_body: !!row.body_html,
+        reading_time_minutes: row.reading_time_minutes,
+      };
+    }
+    res.json(map);
   });
 
   // Refresh a feed's cache
@@ -205,9 +305,164 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const feed = await storage.getFeed(id, req.userId!);
     if (!feed) return res.status(404).json({ error: "Not found" });
     feedCache.delete(id);
-    const items = await fetchFeedItems(feed.url);
-    feedCache.set(id, { items, fetchedAt: Date.now() });
-    res.json({ items: items.slice(0, feed.maxItems) });
+    const rawItems = await fetchFeedItems(feed.url);
+    await upsertFeedItems(id, req.userId!, rawItems).catch(() => {});
+    feedCache.set(id, { items: rawItems, fetchedAt: Date.now() });
+    res.json({ items: rawItems.slice(0, feed.maxItems) });
+  });
+
+  // Get a single feed_item's full content (if already extracted)
+  app.get("/api/feed-items/:id", requireAuth, async (req, res) => {
+    const { data, error } = await supabaseAdmin
+      .from("feed_items")
+      .select("id, title, link, pub_date, author, summary, thumbnail_url, body_html, reading_time_minutes")
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Not found" });
+    res.json(data);
+  });
+
+  // ── Phase 3: Content extraction endpoint ───────────────────────────────────
+  // POST /api/extract { url, item_id }
+  // Fetches article HTML, runs Mozilla Readability, sanitizes with DOMPurify,
+  // persists to feed_items, and returns structured content for the reading pane.
+  app.post("/api/extract", requireAuth, async (req, res) => {
+    const { url, item_id } = req.body;
+    // item_id is optional — if omitted we still extract but skip persisting to feed_items.
+    // This handles the race where item-meta hasn't returned yet when the pane opens.
+    if (!url) {
+      return res.status(400).json({ error: "url required", fallback: true });
+    }
+
+    try {
+      // 1. Fetch article HTML with a realistic browser User-Agent
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let html: string;
+      try {
+        const resp = await fetch(url, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+              "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+          signal: controller.signal,
+          redirect: "follow",
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        html = await resp.text();
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      // 2. Run Mozilla Readability via JSDOM
+      // Bundled inline by esbuild (external:[]). Dynamic import keeps them
+      // out of the module-init critical path so a cold start doesn't parse
+      // jsdom before any request arrives.
+      const { JSDOM } = await import("jsdom");
+      const { Readability } = await import("@mozilla/readability");
+      const DOMPurify = (await import("isomorphic-dompurify")).default;
+      const dom = new JSDOM(html, { url });
+      const reader = new Readability(dom.window.document);
+      const article = reader.parse();
+
+      if (!article) {
+        return res.json({ error: "Readability could not parse article", fallback: true });
+      }
+
+      // 3. Find hero image: check if extracted content starts with an <img>
+      //    or has a prominent image in the first 20% of the body.
+      //    If found, extract src and REMOVE it from the body (no double-render).
+      let heroImageUrl: string | null = null;
+      let contentHtml = article.content || "";
+
+      // Parse the extracted content to find/remove leading hero image
+      const contentDom = new JSDOM(`<div id="root">${contentHtml}</div>`, { url });
+      const root = contentDom.window.document.getElementById("root")!;
+      const allImgs = Array.from(root.querySelectorAll("img"));
+
+      if (allImgs.length > 0) {
+        // Estimate 20% threshold by character position
+        const totalLen = root.innerHTML.length;
+        for (const img of allImgs) {
+          const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
+          if (!src) continue;
+          // Check position in HTML string
+          const imgHtml = img.outerHTML;
+          const pos = root.innerHTML.indexOf(imgHtml);
+          const isProminent = pos !== -1 && pos / totalLen < 0.2;
+          if (isProminent) {
+            heroImageUrl = src;
+            img.remove();
+            contentHtml = root.innerHTML;
+            break;
+          }
+        }
+      }
+
+      // 3b. Fallback hero: use thumbnail_url from the feed_items row (only if item_id known)
+      if (!heroImageUrl && item_id) {
+        const { data: itemRow } = await supabaseAdmin
+          .from("feed_items")
+          .select("thumbnail_url")
+          .eq("id", item_id)
+          .eq("user_id", req.userId)
+          .maybeSingle();
+        heroImageUrl = itemRow?.thumbnail_url || null;
+      }
+
+      // 4. Estimate reading time
+      const wordCount = (article.textContent || "").trim().split(/\s+/).length;
+      const readingTimeMinutes = Math.ceil(wordCount / 200);
+
+      // 5. Sanitize with DOMPurify (server-side)
+      //    isomorphic-dompurify uses a JSDOM window internally
+      const sanitized = DOMPurify.sanitize(contentHtml, {
+        ALLOWED_TAGS: [
+          "p", "br", "b", "strong", "i", "em", "u", "s", "del",
+          "h1", "h2", "h3", "h4", "h5", "h6",
+          "ul", "ol", "li", "blockquote", "pre", "code",
+          "a", "img", "figure", "figcaption",
+          "table", "thead", "tbody", "tr", "th", "td",
+          "div", "span", "hr",
+        ],
+        ALLOWED_ATTR: ["href", "src", "alt", "title", "class", "target", "rel", "width", "height"],
+        ALLOW_DATA_ATTR: false,
+        FORCE_BODY: true,
+      });
+
+      // 6. Persist to feed_items (only if we have a stable item_id to write back to)
+      if (item_id) {
+        await supabaseAdmin
+          .from("feed_items")
+          .update({
+            body_html: sanitized,
+            body_extracted_at: new Date().toISOString(),
+            reading_time_minutes: readingTimeMinutes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", item_id)
+          .eq("user_id", req.userId);
+      }
+
+      // 7. Return response
+      return res.json({
+        title: article.title || "",
+        byline: article.byline || "",
+        content: sanitized,
+        excerpt: article.excerpt || "",
+        hero_image_url: heroImageUrl,
+        reading_time_minutes: readingTimeMinutes,
+        fallback: false,
+      });
+    } catch (e: any) {
+      console.error("[/api/extract error]", e.message);
+      return res.json({ error: e.message, fallback: true });
+    }
   });
 
   // ── Categories ─────────────────────────────────────────────────────────────
