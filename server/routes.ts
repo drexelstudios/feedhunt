@@ -288,7 +288,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         summary: row.summary || "",
         author: row.author || "",
         thumbnail: row.thumbnail_url || null,
-        guid: row.guid,
+        guid: row.id,          // Use Supabase UUID as guid so itemId resolves correctly
         sourceType: "newsletter",
         emailFrom: row.email_from,
         viewOnlineUrl: row.view_online_url,

@@ -42,7 +42,20 @@ function extractFirstImage(html: string): string | null {
 
 /** Strip HTML tags for plain-text summary */
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")   // remove <style> blocks + contents
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")  // remove <script> blocks + contents
+    .replace(/<!--[\s\S]*?-->/g, " ")                    // remove HTML comments
+    .replace(/<[^>]*>/g, " ")                            // strip remaining tags
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
 }
 
 /** Parse sender name + email from a From header string */

@@ -67,23 +67,17 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     const isNewsletter = item.sourceType === "newsletter";
 
     // ── Newsletter path ──────────────────────────────────────────────────────
-    // Newsletters always have body_html stored at IMAP fetch time. Serve
-    // from /api/feed-items/:id directly — never call /api/extract.
+    // Newsletters have body_html stored at IMAP fetch time. Run it through
+    // /api/extract with item_id so Readability cleans it up, same as RSS.
+    // The server detects source_type='newsletter' and skips the HTTP fetch.
     if (isNewsletter && item.itemId) {
       setLoading(true);
-      apiRequest("GET", `/api/feed-items/${item.itemId}`)
+      apiRequest("POST", "/api/extract", {
+        url: item.viewOnlineUrl || item.link || `newsletter:${item.itemId}`,
+        item_id: item.itemId,
+      })
         .then((r) => (r as Response).json())
-        .then((data) => {
-          setExtractResult({
-            title: data.title,
-            byline: data.author,
-            content: data.body_html,
-            excerpt: data.summary,
-            hero_image_url: data.thumbnail_url,
-            reading_time_minutes: data.reading_time_minutes,
-            fallback: !data.body_html,
-          });
-        })
+        .then((data: ExtractResult) => setExtractResult(data))
         .catch(() => setExtractResult({ fallback: true, error: "Failed to load newsletter content" }))
         .finally(() => setLoading(false));
       return;
