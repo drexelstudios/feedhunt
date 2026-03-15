@@ -288,6 +288,42 @@ export default function FeedCreatorDialog({
               </Badge>
             </div>
 
+            {/* Scrape interval */}
+            <div
+              className="rounded-lg p-3 flex items-center justify-between gap-3"
+              style={{ background: "hsl(var(--muted))" }}
+            >
+              <div className="flex items-center gap-2">
+                <Clock size={14} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
+                <div>
+                  <p className="text-xs font-medium" style={{ color: "hsl(var(--foreground))" }}>
+                    Auto-refresh
+                  </p>
+                  <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                    How often to re-scan for new posts
+                  </p>
+                </div>
+              </div>
+              <Select
+                value={String(intervalHours)}
+                onValueChange={handleIntervalChange}
+              >
+                <SelectTrigger
+                  className="w-36 h-7 text-xs"
+                  data-testid="select-interval"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {INTERVAL_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={String(opt.value)} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Generated feed URL */}
             <div className="space-y-1.5">
               <Label style={{ fontSize: "var(--text-sm)" }}>Your RSS feed URL</Label>
@@ -372,42 +408,6 @@ export default function FeedCreatorDialog({
                 </div>
               </div>
             )}
-
-            {/* Scrape interval */}
-            <div
-              className="rounded-lg p-3 flex items-center justify-between gap-3"
-              style={{ background: "hsl(var(--muted))" }}
-            >
-              <div className="flex items-center gap-2">
-                <Clock size={14} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
-                <div>
-                  <p className="text-xs font-medium" style={{ color: "hsl(var(--foreground))" }}>
-                    Auto-refresh
-                  </p>
-                  <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                    How often to re-scan for new posts
-                  </p>
-                </div>
-              </div>
-              <Select
-                value={String(intervalHours)}
-                onValueChange={handleIntervalChange}
-              >
-                <SelectTrigger
-                  className="w-36 h-7 text-xs"
-                  data-testid="select-interval"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {INTERVAL_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={String(opt.value)} className="text-xs">
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
             {/* Actions */}
             <div className="flex gap-2 pt-1">
