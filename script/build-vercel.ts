@@ -27,7 +27,10 @@ async function buildVercel() {
     bundle: true,
     format: "cjs",
     outfile: `${funcDir}/index.js`,
-    external: [],
+    // Externalize jsdom + readability: they are large, rely on native file resolution
+    // (xhr-sync-worker.js), and must not be bundled inline.
+    // They are available in the Vercel Node.js runtime via node_modules.
+    external: ["jsdom", "@mozilla/readability", "isomorphic-dompurify"],
     minify: false,
     logLevel: "info",
     loader: { ".node": "file" },
@@ -36,7 +39,13 @@ async function buildVercel() {
   // Write .vc-config.json for the function
   await writeFile(
     `${funcDir}/.vc-config.json`,
-    JSON.stringify({ runtime: "nodejs20.x", handler: "index.js", launcherType: "Nodejs" }, null, 2)
+    JSON.stringify({
+      runtime: "nodejs20.x",
+      handler: "index.js",
+      launcherType: "Nodejs",
+      // Include the externalized packages so they're available at runtime
+      includeFiles: "node_modules/{jsdom,@mozilla/readability,isomorphic-dompurify}/**",
+    }, null, 2)
   );
 
   // Step 3: Write .vercel/output/config.json with routing rules
