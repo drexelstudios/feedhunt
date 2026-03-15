@@ -83,6 +83,11 @@ export default function Dashboard() {
     queryKey: ["/api/categories"],
   });
 
+  // On mount, refresh any overdue scraped feeds for this user
+  useEffect(() => {
+    apiRequest("POST", "/api/scrape/refresh-due").catch(() => {/* silent */});
+  }, []);
+
   // ── Mutations ────────────────────────────────────────────────────────────────
   const reorderMutation = useMutation({
     mutationFn: (ids: number[]) =>
