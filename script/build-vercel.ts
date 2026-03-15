@@ -32,15 +32,17 @@ async function buildVercel() {
 
   // Plugin 1: xhr-sync-worker
   // jsdom forks a worker for synchronous XHR using require.resolve().
-  // We never use sync XHR, so replace with __filename (a harmless no-op).
+  // We never use sync XHR. Replace the entire declaration with a hardcoded
+  // dummy path so it never triggers a Worker — and avoids __filename which
+  // is undefined in a bundled CJS context at Vercel runtime.
   const patchXhrWorker = {
     name: "patch-xhr-sync-worker",
     setup(build: any) {
       build.onLoad({ filter: /XMLHttpRequest-impl\.js$/ }, (args: any) => {
         let contents = readFileSync(args.path, "utf8");
         contents = contents.replace(
-          /require\.resolve\(['"]\.\/xhr-sync-worker\.js['"]\)/g,
-          "__filename"
+          /const syncWorkerFile = require\.resolve\(['"]\.\/xhr-sync-worker\.js['"]\);/g,
+          'const syncWorkerFile = "/tmp/xhr-noop.js";'
         );
         return { contents, loader: "js" };
       });
