@@ -418,13 +418,75 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      // 2. Run Mozilla Readability via JSDOM
+      const DOMPurify = (await import("isomorphic-dompurify")).default;
+
+      // ── Newsletter path: skip Readability, sanitize raw email HTML directly ──
+      // Readability is designed for web articles — it truncates newsletter
+      // promotional content and footers that are legitimate parts of the email.
+      // We sanitize the full body_html and render it as-is.
+      if (isNewsletter) {
+        const { JSDOM } = await import("jsdom");
+
+        // Sanitize — allow full email HTML structure but strip scripts/tracking
+        const sanitized = DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: [
+            "p", "br", "b", "strong", "i", "em", "u", "s", "del",
+            "h1", "h2", "h3", "h4", "h5", "h6",
+            "ul", "ol", "li", "blockquote", "pre", "code",
+            "a", "img", "figure", "figcaption",
+            "table", "thead", "tbody", "tr", "th", "td",
+            "div", "span", "hr", "center",
+          ],
+          ALLOWED_ATTR: [
+            "href", "src", "alt", "title", "class", "style",
+            "target", "rel", "width", "height", "align",
+            "border", "cellpadding", "cellspacing", "valign",
+          ],
+          ALLOW_DATA_ATTR: false,
+          FORCE_BODY: true,
+        });
+
+        // Extract thumbnail from first image (for hero display)
+        const thumbDom = new JSDOM(`<div>${sanitized}</div>`);
+        const firstImg = thumbDom.window.document.querySelector("img");
+        const heroImageUrl = firstImg?.getAttribute("src") || null;
+
+        // Estimate reading time from text content
+        const textContent = thumbDom.window.document.body?.textContent || "";
+        const wordCount = textContent.trim().split(/\s+/).length;
+        const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+
+        // Persist sanitized HTML back (marks it as extracted so we don't re-run)
+        if (item_id) {
+          await supabaseAdmin
+            .from("feed_items")
+            .update({
+              body_html: sanitized,
+              body_extracted_at: new Date().toISOString(),
+              reading_time_minutes: readingTimeMinutes,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", item_id)
+            .eq("user_id", req.userId);
+        }
+
+        return res.json({
+          title: "",        // reading pane uses item.title directly
+          byline: "",       // reading pane uses item.emailFrom
+          content: sanitized,
+          excerpt: "",
+          hero_image_url: heroImageUrl,
+          reading_time_minutes: readingTimeMinutes,
+          fallback: false,
+        });
+      }
+
+      // ── RSS path: run Mozilla Readability via JSDOM ───────────────────────────
       // Bundled inline by esbuild (external:[]). Dynamic import keeps them
       // out of the module-init critical path so a cold start doesn't parse
       // jsdom before any request arrives.
       const { JSDOM } = await import("jsdom");
       const { Readability } = await import("@mozilla/readability");
-      const DOMPurify = (await import("isomorphic-dompurify")).default;
       const dom = new JSDOM(html, { url });
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
