@@ -58,7 +58,7 @@ export default function AuthPage() {
           height="32"
           viewBox="0 0 28 28"
           fill="none"
-          aria-label="Feedboard logo"
+          aria-label="Feedhunt logo"
           style={{ color: "hsl(var(--primary))" }}
         >
           <rect x="3" y="3" width="9" height="9" rx="2" fill="currentColor" opacity="0.9"/>
@@ -75,7 +75,7 @@ export default function AuthPage() {
             color: "hsl(var(--foreground))",
           }}
         >
-          Feedboard
+          Feedhunt
         </span>
       </div>
 
@@ -137,7 +137,7 @@ export default function AuthPage() {
               style={{ fontSize: "var(--text-sm)", color: "hsl(var(--muted-foreground))" }}
             >
               {mode === "login"
-                ? "Sign in to your Feedboard dashboard"
+                ? "Sign in to your Feedhunt dashboard"
                 : mode === "signup"
                 ? "Start building your personal RSS dashboard"
                 : "Enter your email and we'll send you a reset link"}

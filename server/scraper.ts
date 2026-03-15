@@ -172,7 +172,7 @@ export async function scrapeFeed(
     // Fetch page
     const resp = await fetch(sourceUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Feedboard/1.0; +https://feedboard.app)",
+        "User-Agent": "Mozilla/5.0 (compatible; Feedhunt/1.0; +https://feedhunt.app)",
         "Accept": "text/html,application/xhtml+xml,*/*",
       },
       signal: AbortSignal.timeout(15000),

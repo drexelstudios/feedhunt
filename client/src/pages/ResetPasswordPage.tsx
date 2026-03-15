@@ -59,7 +59,7 @@ export default function ResetPasswordPage() {
           <rect x="16" y="16" width="9" height="9" rx="2" fill="currentColor" opacity="0.3"/>
         </svg>
         <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1.4rem", letterSpacing: "-0.03em", color: "hsl(var(--foreground))" }}>
-          Feedboard
+          Feedhunt
         </span>
       </div>
 

@@ -575,7 +575,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (!url) return res.status(400).json({ error: "url required" });
     try {
       const resp = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; Feedboard/1.0)", "Accept": "text/html,*/*" },
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; Feedhunt/1.0)", "Accept": "text/html,*/*" },
         signal: AbortSignal.timeout(10000),
         redirect: "follow",
       });
@@ -720,7 +720,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     <link>${escXml(feed.source_url)}</link>
     <description>${escXml(feed.site_description || "")}</description>
     <lastBuildDate>${toRFC2822(feed.last_scraped_at)}</lastBuildDate>
-    <generator>Feedboard Feed Creator</generator>${items}
+    <generator>Feedhunt Feed Creator</generator>${items}
   </channel>
 </rss>`;
 

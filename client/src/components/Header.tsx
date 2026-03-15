@@ -60,7 +60,7 @@ export default function Header({ onAddFeed, onCreateFeed }: HeaderProps) {
             height="28"
             viewBox="0 0 28 28"
             fill="none"
-            aria-label="Feedboard logo"
+            aria-label="Feedhunt logo"
             style={{ color: "hsl(var(--primary))" }}
           >
             <rect x="3" y="3" width="9" height="9" rx="2" fill="currentColor" opacity="0.9"/>
@@ -77,7 +77,7 @@ export default function Header({ onAddFeed, onCreateFeed }: HeaderProps) {
               color: "hsl(var(--foreground))",
             }}
           >
-            Feedboard
+            Feedhunt
           </span>
         </div>
 

@@ -133,7 +133,7 @@ export default function FeedCreatorDialog({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleAddToFeedboard = () => {
+  const handleAddToFeedhunt = () => {
     if (!result) return;
     onFeedCreated?.(feedUrl, result.feed.site_title || result.feed.source_url);
     handleClose();
@@ -345,7 +345,7 @@ export default function FeedCreatorDialog({
                 </Button>
               </div>
               <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
-                Use this URL in any RSS reader, or click "Add to Feedboard" below.
+                Use this URL in any RSS reader, or click "Add to Feedhunt" below.
               </p>
             </div>
 
@@ -412,12 +412,12 @@ export default function FeedCreatorDialog({
             {/* Actions */}
             <div className="flex gap-2 pt-1">
               <Button
-                data-testid="button-add-to-feedboard"
-                onClick={handleAddToFeedboard}
+                data-testid="button-add-to-feedhunt"
+                onClick={handleAddToFeedhunt}
                 disabled={result.posts.length === 0}
                 className="flex-1 gap-2"
               >
-                Add to Feedboard
+                Add to Feedhunt
               </Button>
               <Button
                 data-testid="button-rescan"
