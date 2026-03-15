@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Feed } from "@shared/schema";
 import {
@@ -27,13 +27,19 @@ interface EditFeedDialogProps {
   feed: Feed;
 }
 
-const ALL_CATEGORIES = ["General", "News", "Tech", "Design", "Science", "Business", "Sports", "Health", "Entertainment"];
+
 
 export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDialogProps) {
   const [title, setTitle] = useState(feed.title);
   const [category, setCategory] = useState(feed.category);
   const [maxItems, setMaxItems] = useState(feed.maxItems);
   const { toast } = useToast();
+
+  // Live category list — picks up any tabs the user has created
+  const { data: categoryData = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/categories"],
+  });
+  const allCategories = categoryData.map((c) => c.name);
 
   useEffect(() => {
     setTitle(feed.title);
@@ -96,7 +102,7 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ALL_CATEGORIES.map((c) => (
+                  {allCategories.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
