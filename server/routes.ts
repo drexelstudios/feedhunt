@@ -306,8 +306,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // persists to feed_items, and returns structured content for the reading pane.
   app.post("/api/extract", requireAuth, async (req, res) => {
     const { url, item_id } = req.body;
-    if (!url || !item_id) {
-      return res.status(400).json({ error: "url and item_id required", fallback: true });
+    // item_id is optional — if omitted we still extract but skip persisting to feed_items.
+    // This handles the race where item-meta hasn't returned yet when the pane opens.
+    if (!url) {
+      return res.status(400).json({ error: "url required", fallback: true });
     }
 
     try {
@@ -376,8 +378,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
         }
       }
 
-      // 3b. Fallback hero: use thumbnail_url from the feed_items row
-      if (!heroImageUrl) {
+      // 3b. Fallback hero: use thumbnail_url from the feed_items row (only if item_id known)
+      if (!heroImageUrl && item_id) {
         const { data: itemRow } = await supabaseAdmin
           .from("feed_items")
           .select("thumbnail_url")
@@ -407,18 +409,19 @@ export function registerRoutes(httpServer: Server, app: Express) {
         FORCE_BODY: true,
       });
 
-      // 6. Persist to feed_items
-      await supabaseAdmin
-        .from("feed_items")
-        .update({
-          body_html: sanitized,
-          body_extracted_at: new Date().toISOString(),
-          reading_time_minutes: readingTimeMinutes,
-          ...(heroImageUrl ? {} : {}), // thumbnail_url set at upsert time, not here
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", item_id)
-        .eq("user_id", req.userId);
+      // 6. Persist to feed_items (only if we have a stable item_id to write back to)
+      if (item_id) {
+        await supabaseAdmin
+          .from("feed_items")
+          .update({
+            body_html: sanitized,
+            body_extracted_at: new Date().toISOString(),
+            reading_time_minutes: readingTimeMinutes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", item_id)
+          .eq("user_id", req.userId);
+      }
 
       // 7. Return response
       return res.json({
