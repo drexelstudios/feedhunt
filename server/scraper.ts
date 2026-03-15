@@ -94,6 +94,10 @@ export async function extractWithClaude(
 
   const today = new Date().toISOString().split("T")[0];
 
+  // Trim input — 15k chars is plenty for finding article links on a homepage.
+  // Keeps Claude latency well within Vercel's 30s function limit.
+  const truncatedHtml = cleanedHtml.slice(0, 15000);
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -101,14 +105,16 @@ export async function extractWithClaude(
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
+    // 20s timeout — page fetch takes up to 15s, leaving 15s buffer before Vercel's 30s limit
+    signal: AbortSignal.timeout(20000),
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 2048,
       system: `You are an RSS feed extraction engine. The page content uses markdown-style links: [title](url). Extract all blog posts, articles, or newsletter entries. For each post extract: title (the link text), link (the EXACT url from the parentheses — do NOT modify, shorten, or reconstruct it), description (brief summary if available), pubDate (ISO 8601 format if found, otherwise empty string). CRITICAL: Use the exact URL as given in the (url) part of each [text](url) link — never guess or derive the URL from the title. Return ONLY valid JSON with no markdown, no explanation, nothing else: {"siteTitle":"","siteDescription":"","items":[{"title":"","link":"","description":"","pubDate":""}]}. Today's date: ${today}.`,
       messages: [
         {
           role: "user",
-          content: `Base URL: ${sourceUrl}\n\nPage content:\n${cleanedHtml}`,
+          content: `Base URL: ${sourceUrl}\n\nPage content:\n${truncatedHtml}`,
         },
       ],
     }),
