@@ -190,14 +190,21 @@ export async function scrapeFeed(
     if (result.items?.length) {
       const posts = result.items
         .filter((item) => item.title && item.link)
-        .map((item) => ({
-          feed_id: feedId,
-          title: item.title,
-          link: item.link,
-          description: item.description || "",
-          pub_date: item.pubDate ? new Date(item.pubDate).toISOString() : null,
-          guid: item.link,
-        }));
+        .map((item) => {
+          // Resolve relative links to absolute URLs
+          let link = item.link;
+          try {
+            link = new URL(item.link, sourceUrl).href;
+          } catch { /* keep as-is */ }
+          return {
+            feed_id: feedId,
+            title: item.title,
+            link,
+            description: item.description || "",
+            pub_date: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+            guid: link,
+          };
+        });
 
       await supabase
         .from("scraped_posts")
