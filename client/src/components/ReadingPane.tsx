@@ -8,12 +8,16 @@
  *
  * Content is loaded on demand via /api/extract, then cached in Supabase feed_items.
  * DOMPurify already ran server-side before body_html was stored — noted in comment.
+ *
+ * Newsletter items: body_html is pre-stored at IMAP fetch time. When item.sourceType
+ * === 'newsletter' and item.hasBody === true, we serve the cached body directly from
+ * /api/feed-items/:id without calling /api/extract at all.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import type { EnrichedFeedItem } from "@/components/FeedWidget";
-import { X, ExternalLink, ArrowLeft, Share2, Clock } from "lucide-react";
+import { X, ExternalLink, ArrowLeft, Share2, Clock, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFaviconUrl } from "@/lib/utils";
 
@@ -59,6 +63,33 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     if (itemKey === lastItemIdRef.current && extractResult && !extractResult.fallback) return;
     lastItemIdRef.current = itemKey;
     setExtractResult(null);
+
+    const isNewsletter = item.sourceType === "newsletter";
+
+    // ── Newsletter path ──────────────────────────────────────────────────────
+    // Newsletters always have body_html stored at IMAP fetch time. Serve
+    // from /api/feed-items/:id directly — never call /api/extract.
+    if (isNewsletter && item.itemId) {
+      setLoading(true);
+      apiRequest("GET", `/api/feed-items/${item.itemId}`)
+        .then((r) => (r as Response).json())
+        .then((data) => {
+          setExtractResult({
+            title: data.title,
+            byline: data.author,
+            content: data.body_html,
+            excerpt: data.summary,
+            hero_image_url: data.thumbnail_url,
+            reading_time_minutes: data.reading_time_minutes,
+            fallback: !data.body_html,
+          });
+        })
+        .catch(() => setExtractResult({ fallback: true, error: "Failed to load newsletter content" }))
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    // ── RSS path (existing logic) ─────────────────────────────────────────────
 
     // If body already extracted and we have a stable DB id, serve from cache
     if (item.hasBody && item.itemId) {
@@ -160,7 +191,7 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
   // ── Share ────────────────────────────────────────────────────────────────────
   const handleShare = useCallback(async () => {
-    const url = item?.link || "";
+    const url = item?.viewOnlineUrl || item?.link || "";
     const title = item?.title || "";
     if (typeof navigator.share === "function") {
       try { await navigator.share({ title, url }); return; } catch { /* cancelled */ }
@@ -174,6 +205,7 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
   if (!item) return null;
 
+  const isNewsletter = item.sourceType === "newsletter";
   const heroUrl = extractResult?.hero_image_url ?? item.thumbnailUrl ?? null;
   const displayTitle = extractResult?.title || item.title;
   const displayByline = extractResult?.byline || item.author || null;
@@ -182,6 +214,11 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
   const formattedDate = item.pubDate
     ? new Date(item.pubDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;
+
+  // For newsletters: "Open original" uses viewOnlineUrl if available; hide if absent
+  const externalUrl = isNewsletter
+    ? (item.viewOnlineUrl || null)
+    : item.link;
 
   return (
     <>
@@ -227,27 +264,43 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
           {/* Feed identity — centered */}
           <div className="reading-pane__feed-name">
-            <img
-              src={faviconUrl}
-              alt=""
-              width={14}
-              height={14}
-              style={{ borderRadius: 3, flexShrink: 0 }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
+            {isNewsletter ? (
+              <Mail
+                size={14}
+                style={{ flexShrink: 0, color: "hsl(var(--muted-foreground))" }}
+                aria-hidden
+              />
+            ) : (
+              <img
+                src={faviconUrl}
+                alt=""
+                width={14}
+                height={14}
+                style={{ borderRadius: 3, flexShrink: 0 }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            )}
             <span>{item.feedTitle}</span>
           </div>
 
-          {/* Desktop: open original. Mobile: share. */}
-          <a
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Open original article"
-            className="reading-pane__external reading-pane__external--desktop"
-          >
-            <ExternalLink size={15} />
-          </a>
+          {/* Desktop: open original (hidden for newsletters without viewOnlineUrl).
+              Mobile: share button. */}
+          {externalUrl ? (
+            <a
+              href={externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open original article"
+              className="reading-pane__external reading-pane__external--desktop"
+            >
+              <ExternalLink size={15} />
+            </a>
+          ) : (
+            /* Placeholder to keep header layout balanced when no external link */
+            <span className="reading-pane__external reading-pane__external--desktop" aria-hidden style={{ visibility: "hidden" }}>
+              <ExternalLink size={15} />
+            </span>
+          )}
           <button
             onClick={handleShare}
             aria-label="Share article"
@@ -280,8 +333,22 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
             <h1 className="reading-pane__title">{displayTitle}</h1>
 
             <div className="reading-pane__meta">
-              {displayByline && <span>{displayByline}</span>}
-              {displayByline && formattedDate && <span aria-hidden>·</span>}
+              {/* Newsletter: show "From: sender" line */}
+              {isNewsletter && item.emailFrom && (
+                <span
+                  className="flex items-center gap-1"
+                  style={{ color: "hsl(var(--muted-foreground))", fontSize: "var(--text-xs)" }}
+                >
+                  <Mail size={10} aria-hidden />
+                  {item.emailFrom}
+                </span>
+              )}
+              {isNewsletter && item.emailFrom && formattedDate && (
+                <span aria-hidden>·</span>
+              )}
+              {/* RSS: show byline */}
+              {!isNewsletter && displayByline && <span>{displayByline}</span>}
+              {!isNewsletter && displayByline && formattedDate && <span aria-hidden>·</span>}
               {formattedDate && <span>{formattedDate}</span>}
               {readingTime && (
                 <>
@@ -304,7 +371,7 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
             {/* Fallback */}
             {!loading && extractResult?.fallback && (
-              <FallbackState url={item.link} error={extractResult.error} />
+              <FallbackState url={externalUrl || item.link} error={extractResult.error} />
             )}
 
             {/* Article body
@@ -318,11 +385,11 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               />
             )}
 
-            {/* Footer */}
-            {!loading && (
+            {/* Footer — only show "Read original" when there's an external URL */}
+            {!loading && externalUrl && (
               <div className="reading-pane__footer">
-                <a href={item.link} target="_blank" rel="noopener noreferrer">
-                  Read original article →
+                <a href={externalUrl} target="_blank" rel="noopener noreferrer">
+                  {isNewsletter ? "View online →" : "Read original article →"}
                 </a>
               </div>
             )}

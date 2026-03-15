@@ -15,6 +15,7 @@ import {
   ExternalLink,
   GripVertical,
   Settings,
+  Mail,
 } from "lucide-react";
 import EditFeedDialog from "@/components/EditFeedDialog";
 
@@ -34,6 +35,10 @@ export interface FeedItem {
   author: string;
   thumbnail: string | null;
   guid: string;
+  // Newsletter-specific (present when sourceType === 'newsletter')
+  sourceType?: "rss" | "newsletter";
+  emailFrom?: string | null;
+  viewOnlineUrl?: string | null;
 }
 
 // FeedItem enriched with Supabase metadata (id, thumbnail override, etc.)
@@ -44,6 +49,10 @@ export interface EnrichedFeedItem extends FeedItem {
   readingTimeMinutes: number | null;
   feedTitle: string;
   feedId: number;
+  // Newsletter-specific (passed through from FeedItem)
+  sourceType?: "rss" | "newsletter";
+  emailFrom?: string | null;
+  viewOnlineUrl?: string | null;
 }
 
 // Item metadata map returned by /api/feeds/:id/item-meta
@@ -71,10 +80,14 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
     staleTime: 4 * 60 * 1000,
   });
 
-  // Item metadata from Supabase (stable IDs + thumbnails) — fetched after items load
+  // Detect feed type from first item (newsletter items have sourceType set)
+  const isNewsletterFeed = (data?.items ?? []).some((item) => item.sourceType === "newsletter");
+
+  // Item metadata from Supabase (stable IDs + thumbnails) — only for RSS feeds
   const { data: itemMeta } = useQuery<Record<string, ItemMeta>>({
     queryKey: [`/api/feeds/${feed.id}/item-meta`],
-    enabled: !!data?.items?.length,
+    // Newsletter items arrive pre-enriched; skip the item-meta query for them
+    enabled: !!data?.items?.length && !isNewsletterFeed,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -103,6 +116,23 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
 
   // Enrich items with Supabase metadata
   const enrichedItems: EnrichedFeedItem[] = items.map((item) => {
+    if (item.sourceType === "newsletter") {
+      // Newsletter items arrive fully enriched from the API — no item-meta needed
+      return {
+        ...item,
+        itemId: item.guid ?? null,   // guid IS the Supabase UUID for newsletter items
+        thumbnailUrl: item.thumbnail ?? null,
+        hasBody: true,               // newsletters always have body_html
+        readingTimeMinutes: null,
+        feedTitle: feed.title,
+        feedId: feed.id,
+        sourceType: "newsletter",
+        emailFrom: item.emailFrom ?? null,
+        viewOnlineUrl: item.viewOnlineUrl ?? null,
+      };
+    }
+
+    // RSS path — merge item-meta as before
     const meta = itemMeta?.[item.guid];
     return {
       ...item,
@@ -112,6 +142,7 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
       readingTimeMinutes: meta?.reading_time_minutes ?? null,
       feedTitle: feed.title,
       feedId: feed.id,
+      sourceType: "rss",
     };
   });
 
@@ -157,18 +188,21 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
 
         {/* Actions */}
         <div className="widget-actions">
-          <button
-            data-testid={`button-refresh-${feed.id}`}
-            onClick={(e) => { e.stopPropagation(); refreshMutation.mutate(); }}
-            className="p-1 rounded transition-colors hover:bg-accent"
-            style={{ color: "hsl(var(--muted-foreground))" }}
-            title="Refresh"
-          >
-            <RefreshCw
-              size={12}
-              className={refreshMutation.isPending ? "animate-spin" : ""}
-            />
-          </button>
+          {/* Refresh button — RSS only; newsletters sync via IMAP */}
+          {!isNewsletterFeed && (
+            <button
+              data-testid={`button-refresh-${feed.id}`}
+              onClick={(e) => { e.stopPropagation(); refreshMutation.mutate(); }}
+              className="p-1 rounded transition-colors hover:bg-accent"
+              style={{ color: "hsl(var(--muted-foreground))" }}
+              title="Refresh"
+            >
+              <RefreshCw
+                size={12}
+                className={refreshMutation.isPending ? "animate-spin" : ""}
+              />
+            </button>
+          )}
           <button
             data-testid={`button-settings-${feed.id}`}
             onClick={(e) => { e.stopPropagation(); setShowEdit(true); }}
@@ -236,6 +270,7 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
               {enrichedItems.map((item, i) => {
                 const isActive = item.itemId != null && item.itemId === selectedItemId;
                 const thumb = item.thumbnailUrl;
+                const isNewsletter = item.sourceType === "newsletter";
 
                 return (
                   <li
@@ -270,16 +305,34 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
                         <div className="feed-item-summary">{item.summary}</div>
                       )}
                       <div className="feed-item-meta">
-                        {item.author && <span>{item.author}</span>}
-                        {item.author && item.pubDate && <span>·</span>}
+                        {/* Newsletter: show sender instead of author */}
+                        {isNewsletter && item.emailFrom ? (
+                          <span
+                            className="flex items-center gap-1"
+                            style={{ color: "hsl(var(--muted-foreground))" }}
+                          >
+                            <Mail size={9} aria-hidden />
+                            {item.emailFrom}
+                          </span>
+                        ) : (
+                          item.author && <span>{item.author}</span>
+                        )}
+                        {((isNewsletter && item.emailFrom) || (!isNewsletter && item.author)) && item.pubDate && (
+                          <span>·</span>
+                        )}
                         {item.pubDate && <span>{timeAgo(item.pubDate)}</span>}
-                        {item.readingTimeMinutes && (
+                        {!isNewsletter && item.readingTimeMinutes && (
                           <>
                             <span>·</span>
                             <span>{item.readingTimeMinutes} min read</span>
                           </>
                         )}
-                        <ExternalLink size={9} className="ml-auto opacity-40" />
+                        {!isNewsletter && (
+                          <ExternalLink size={9} className="ml-auto opacity-40" />
+                        )}
+                        {isNewsletter && (
+                          <Mail size={9} className="ml-auto opacity-30" aria-label="Newsletter" />
+                        )}
                       </div>
                     </a>
                   </li>
