@@ -91,6 +91,36 @@ async function buildVercel() {
     },
   };
 
+  // Plugin 4: css-tree createRequire(import.meta.url)
+  // css-tree uses ESM import.meta.url to build a require() for loading JSON
+  // (mdn-data, patch.json, package.json). esbuild converts import.meta to {}
+  // so import.meta.url === undefined, causing createRequire(undefined) to throw:
+  // "The argument 'filename' must be a file URL object..."
+  // Fix: strip the import + replace `createRequire(import.meta.url)` with the
+  // native CJS `require` that esbuild makes available in every bundle scope.
+  const patchCssTreeCreateRequire = {
+    name: "patch-css-tree-create-require",
+    setup(build: any) {
+      build.onLoad(
+        { filter: /css-tree\/lib\/(data-patch|data|version)\.js$/ },
+        (args: any) => {
+          let contents = readFileSync(args.path, "utf8");
+          // Remove the createRequire import line
+          contents = contents.replace(
+            /import\s*\{\s*createRequire\s*\}\s*from\s*['"]module['"];?\s*/g,
+            ""
+          );
+          // Replace createRequire(import.meta.url) with the native require
+          contents = contents.replace(
+            /const require = createRequire\(import\.meta\.url\);?\s*/g,
+            ""
+          );
+          return { contents, loader: "js" };
+        }
+      );
+    },
+  };
+
   await esbuild({
     entryPoints: ["server/vercel-handler.ts"],
     platform: "node",
@@ -98,7 +128,7 @@ async function buildVercel() {
     format: "cjs",
     outfile: `${funcDir}/index.js`,
     external: [],
-    plugins: [patchXhrWorker, patchComputedStyle, patchStyleRules],
+    plugins: [patchXhrWorker, patchComputedStyle, patchStyleRules, patchCssTreeCreateRequire],
     minify: false,
     logLevel: "info",
     loader: { ".node": "file" },
