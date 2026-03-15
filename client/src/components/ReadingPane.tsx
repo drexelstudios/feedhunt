@@ -304,23 +304,22 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
           </button>
         </div>
 
-        {/* ── Hero image ──────────────────────────────────────────────────── */}
-        {heroUrl && (
-          <div className="reading-pane__hero">
-            <img
-              src={heroUrl}
-              alt=""
-              loading="lazy"
-              onError={(e) => {
-                const el = (e.target as HTMLImageElement).closest(".reading-pane__hero") as HTMLElement | null;
-                if (el) el.style.display = "none";
-              }}
-            />
-          </div>
-        )}
-
         {/* ── Scrollable content ───────────────────────────────────────────── */}
         <div className="reading-pane__scroll">
+          {/* ── Hero image (scrolls with content) ──────────────────────────── */}
+          {heroUrl && (
+            <div className="reading-pane__hero">
+              <img
+                src={heroUrl}
+                alt=""
+                loading="lazy"
+                onError={(e) => {
+                  const el = (e.target as HTMLImageElement).closest(".reading-pane__hero") as HTMLElement | null;
+                  if (el) el.style.display = "none";
+                }}
+              />
+            </div>
+          )}
           <div className="reading-pane__inner">
 
             {/* Article header */}
