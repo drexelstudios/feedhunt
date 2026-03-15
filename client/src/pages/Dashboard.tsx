@@ -38,7 +38,6 @@ import FeedWidget from "@/components/FeedWidget";
 import AddFeedDialog from "@/components/AddFeedDialog";
 import FeedCreatorDialog from "@/components/FeedCreatorDialog";
 import Header from "@/components/Header";
-import PerplexityAttribution from "@/components/PerplexityAttribution";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, MoreHorizontal, Pencil, Trash2, Check, X } from "lucide-react";
@@ -453,7 +452,7 @@ export default function Dashboard() {
         <span className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
           {feeds.length} feed{feeds.length !== 1 ? "s" : ""} · refreshes every 5 min
         </span>
-        <PerplexityAttribution />
+
       </footer>
 
       <AddFeedDialog
