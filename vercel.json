@@ -3,6 +3,11 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": ".vercel/output",
   "installCommand": "npm ci",
+  "functions": {
+    "api/index.func/index.js": {
+      "maxDuration": 30
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/scrape",
