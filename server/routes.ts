@@ -389,9 +389,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
           .eq("user_id", req.userId)
           .maybeSingle();
 
-        if (itemRow?.source_type === "newsletter" && itemRow?.body_html) {
-          html = itemRow.body_html;
+        if (itemRow?.source_type === "newsletter") {
           isNewsletter = true;
+          if (itemRow?.body_html) {
+            html = itemRow.body_html;
+          } else {
+            // body_html was cleared (reset) — tell client to sync first
+            return res.json({
+              fallback: true,
+              error: "Newsletter content not available. Hit Sync now to re-fetch.",
+            });
+          }
         }
       }
 
