@@ -43,6 +43,7 @@ async function buildVercel() {
       runtime: "nodejs20.x",
       handler: "index.js",
       launcherType: "Nodejs",
+      maxDuration: 30,
       // Include the externalized packages so they're available at runtime
       includeFiles: "node_modules/{jsdom,@mozilla/readability,isomorphic-dompurify}/**",
     }, null, 2)
