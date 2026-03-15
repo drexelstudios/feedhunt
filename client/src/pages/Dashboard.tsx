@@ -36,6 +36,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Feed, Category } from "@shared/schema";
 import FeedWidget from "@/components/FeedWidget";
 import AddFeedDialog from "@/components/AddFeedDialog";
+import FeedCreatorDialog from "@/components/FeedCreatorDialog";
 import Header from "@/components/Header";
 import PerplexityAttribution from "@/components/PerplexityAttribution";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,8 @@ export default function Dashboard() {
   const [layout, setLayout] = useState<Layout>("grid");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [showAddFeed, setShowAddFeed] = useState(false);
+  const [showCreateFeed, setShowCreateFeed] = useState(false);
+  const [prefillUrl, setPrefillUrl] = useState<string | undefined>();
   // Inline rename state
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -178,7 +181,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "hsl(var(--background))" }}>
-      <Header onAddFeed={() => setShowAddFeed(true)} />
+      <Header onAddFeed={() => setShowAddFeed(true)} onCreateFeed={() => setShowCreateFeed(true)} />
 
       {/* Category tabs + layout toggle */}
       <div
@@ -462,8 +465,19 @@ export default function Dashboard() {
 
       <AddFeedDialog
         open={showAddFeed}
-        onOpenChange={setShowAddFeed}
+        onOpenChange={(open) => { setShowAddFeed(open); if (!open) setPrefillUrl(undefined); }}
         categories={categoryNames}
+      />
+
+      <FeedCreatorDialog
+        open={showCreateFeed}
+        onOpenChange={setShowCreateFeed}
+        onFeedCreated={(feedUrl, title) => {
+          // Pre-open Add Feed dialog with the generated URL pre-filled
+          setShowCreateFeed(false);
+          setPrefillUrl(feedUrl);
+          setShowAddFeed(true);
+        }}
       />
 
       {/* Delete category confirmation */}
