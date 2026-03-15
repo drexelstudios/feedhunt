@@ -454,10 +454,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
           FORCE_BODY: true,
         });
 
-        // Extract thumbnail from first image (for hero display)
+        // Extract thumbnail from first image (for hero display).
+        // Skip tracking pixels (width=1, height=1, or common tracking URL patterns).
         const thumbDom = new JSDOM(`<div>${sanitized}</div>`);
-        const firstImg = thumbDom.window.document.querySelector("img");
-        const heroImageUrl = firstImg?.getAttribute("src") || null;
+        const allImgs = Array.from(thumbDom.window.document.querySelectorAll("img"));
+        const heroImageUrl = allImgs
+          .map((img) => ({
+            src: img.getAttribute("src") || "",
+            w: parseInt(img.getAttribute("width") || "0", 10),
+            h: parseInt(img.getAttribute("height") || "0", 10),
+          }))
+          .find(
+            ({ src, w, h }) =>
+              src &&
+              src.startsWith("http") &&
+              // Skip obvious tracking pixels: 1×1 or either dimension is 1
+              !(w === 1 || h === 1) &&
+              // Skip common tracking pixel URL patterns
+              !/(track|pixel|beacon|open\.php|trk\.|1x1|spacer|blank\.|transparent)/i.test(src)
+          )
+          ?.src || null;
 
         // Estimate reading time from text content
         const textContent = thumbDom.window.document.body?.textContent || "";
