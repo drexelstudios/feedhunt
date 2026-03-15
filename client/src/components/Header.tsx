@@ -9,16 +9,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sun, Moon, Plus, RefreshCw, LogOut, User } from "lucide-react";
+import { Sun, Moon, Plus, RefreshCw, LogOut, Sparkles } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import type { Feed } from "@shared/schema";
 
 interface HeaderProps {
   onAddFeed: () => void;
+  onCreateFeed: () => void;
 }
 
-export default function Header({ onAddFeed }: HeaderProps) {
+export default function Header({ onAddFeed, onCreateFeed }: HeaderProps) {
   const { theme, toggle } = useTheme();
   const { user, signOut } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
@@ -104,6 +105,17 @@ export default function Header({ onAddFeed }: HeaderProps) {
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
+
+          <Button
+            data-testid="button-create-feed"
+            onClick={onCreateFeed}
+            size="sm"
+            variant="outline"
+            className="gap-1.5 h-8 text-xs font-semibold hidden sm:flex"
+          >
+            <Sparkles size={13} />
+            Create Feed
+          </Button>
 
           <Button
             data-testid="button-add-feed"
