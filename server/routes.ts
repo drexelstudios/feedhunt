@@ -240,7 +240,79 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ success: true });
   });
 
+  // ── Cron: auto-scrape feeds that are due ────────────────────────────────────
+  app.get("/api/cron/scrape", async (req, res) => {
+    // Verify request is from Vercel Cron or carries the shared secret
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.authorization;
+    const isVercelCron = req.headers["x-vercel-cron"] === "1";
+    const hasSecret = cronSecret && authHeader === `Bearer ${cronSecret}`;
+
+    if (!isVercelCron && !hasSecret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+      // Find all feeds whose next scrape time has arrived:
+      // last_scraped_at + scrape_interval_hours <= now  (or never scraped)
+      const { data: dueFeeds, error } = await supabaseAdmin
+        .from("scraped_feeds")
+        .select("id, source_url, user_id, scrape_interval_hours, last_scraped_at")
+        .or("last_scraped_at.is.null,last_scraped_at.lt." +
+          new Date(Date.now()).toISOString() // filtered below in JS
+        );
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      const now = Date.now();
+      const due = (dueFeeds || []).filter((feed) => {
+        if (!feed.last_scraped_at) return true;
+        const intervalMs = (feed.scrape_interval_hours ?? 24) * 60 * 60 * 1000;
+        return now - new Date(feed.last_scraped_at).getTime() >= intervalMs;
+      });
+
+      console.log(`[cron] ${due.length} feeds due for re-scrape`);
+
+      // Scrape each due feed (sequentially to avoid hammering Claude)
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const feed of due) {
+        const result = await scrapeFeed(feed.source_url, feed.id, feed.user_id);
+        results.push({ id: feed.id, success: result.success, error: result.error });
+      }
+
+      res.json({ ran: results.length, results });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Feed Creator ────────────────────────────────────────────────────────────
+
+  // Refresh overdue scraped feeds for the logged-in user (called on login)
+  app.post("/api/scrape/refresh-due", requireAuth, async (req, res) => {
+    try {
+      const { data: feeds } = await supabaseAdmin
+        .from("scraped_feeds")
+        .select("id, source_url, scrape_interval_hours, last_scraped_at")
+        .eq("user_id", req.userId);
+
+      const now = Date.now();
+      const due = (feeds || []).filter((feed) => {
+        if (!feed.last_scraped_at) return true;
+        const intervalMs = (feed.scrape_interval_hours ?? 24) * 60 * 60 * 1000;
+        return now - new Date(feed.last_scraped_at).getTime() >= intervalMs;
+      });
+
+      // Fire-and-forget — don't block the response
+      res.json({ queued: due.length });
+
+      for (const feed of due) {
+        scrapeFeed(feed.source_url, feed.id, req.userId!).catch(() => {});
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // Quick client-side preview (no AI, instant)
   app.post("/api/scrape/preview", requireAuth, async (req, res) => {
@@ -329,6 +401,25 @@ export function registerRoutes(httpServer: Server, app: Express) {
       .eq("user_id", req.userId);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
+  });
+
+  // Update scraped feed settings (e.g. scrape_interval_hours)
+  app.patch("/api/scrape/feeds/:id", requireAuth, async (req, res) => {
+    const allowed = ["scrape_interval_hours"];
+    const updates: Record<string, any> = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+    if (!Object.keys(updates).length) return res.status(400).json({ error: "No valid fields" });
+    const { data, error } = await supabaseAdmin
+      .from("scraped_feeds")
+      .update(updates)
+      .eq("id", req.params.id)
+      .eq("user_id", req.userId)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
   // ── RSS XML endpoint (public — no auth required) ────────────────────────────
