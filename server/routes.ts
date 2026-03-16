@@ -953,6 +953,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ ...result, feed: feedData, posts: posts || [] });
   });
 
+  // Re-scan an existing scraped feed by slug (used by Edit Feed dialog)
+  app.post("/api/scrape/rescan", requireAuth, async (req, res) => {
+    const { slug } = req.body;
+    if (!slug) return res.status(400).json({ error: "slug required" });
+    const { data: feed, error } = await supabaseAdmin
+      .from("scraped_feeds")
+      .select("*")
+      .eq("feed_slug", slug)
+      .eq("user_id", req.userId)
+      .single();
+    if (error || !feed) return res.status(404).json({ error: "Feed not found" });
+    const result = await scrapeFeed(feed.source_url, feed.id, req.userId!);
+    res.json(result);
+  });
+
   // List user's scraped feeds
   app.get("/api/scrape/feeds", requireAuth, async (req, res) => {
     const { data, error } = await supabaseAdmin
@@ -1006,12 +1021,35 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     if (!feed) return res.status(404).send("Feed not found");
 
-    const { data: posts } = await supabaseAdmin
+    let { data: posts } = await supabaseAdmin
       .from("scraped_posts")
       .select("*")
       .eq("feed_id", feed.id)
       .order("pub_date", { ascending: false })
       .limit(50);
+
+    // Fallback: if no posts stored yet, do a live quickExtract so the feed is never blank
+    if (!posts?.length) {
+      try {
+        const pageResp = await fetch(feed.source_url, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; Feedhunt/1.0)" },
+          signal: AbortSignal.timeout(8000),
+          redirect: "follow",
+        });
+        if (pageResp.ok) {
+          const html = await pageResp.text();
+          const { quickExtract } = await import("./scraper");
+          const extracted = quickExtract(html, feed.source_url);
+          posts = extracted.map((item) => ({
+            title: item.title,
+            link: item.link,
+            description: item.description,
+            pub_date: item.pubDate || null,
+            guid: item.link,
+          })) as any;
+        }
+      } catch { /* serve empty feed rather than error */ }
+    }
 
     const escXml = (s: string) =>
       (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
