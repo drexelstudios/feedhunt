@@ -322,7 +322,7 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               />
             </div>
           )}
-          <div className="reading-pane__inner">
+          <div className={cn("reading-pane__inner", isNewsletter && "reading-pane__inner--newsletter")}>
 
             {/* Article header */}
             <h1 className="reading-pane__title">{displayTitle}</h1>
