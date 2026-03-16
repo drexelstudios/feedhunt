@@ -581,18 +581,27 @@ export function registerRoutes(httpServer: Server, app: Express) {
           }
         });
 
-        // ── Pass 2: remove pure spacer rows (no visible text or images) ──────
-        // A <tr> is a spacer if all its <td> children contain only whitespace /
-        // &nbsp; and no <img> elements.
+        // ── Pass 2: remove spacer rows and cells ────────────────────────────────
+        // Email spacer rows have: no text content (only \s/&nbsp;) AND any imgs
+        // are tiny (w<=4 or h<=4 — tracking pixels / 1px spacer gifs).
+        const isSpacerImg = (img: Element): boolean => {
+          const w = parseInt(img.getAttribute("width") || "999", 10);
+          const h = parseInt(img.getAttribute("height") || "999", 10);
+          return w <= 4 || h <= 4;
+        };
+
         const rows = Array.from(doc.querySelectorAll("tr"));
         rows.forEach((row) => {
-          const tds = Array.from(row.querySelectorAll("td"));
-          if (tds.length === 0) return;
-          const hasImg = row.querySelector("img") !== null;
-          if (hasImg) return;
           const textContent = row.textContent || "";
-          const isBlank = textContent.replace(/[\u00a0\s]/g, "").length === 0;
-          if (isBlank) row.remove();
+          const hasVisibleText = textContent.replace(/[\u00a0\s]/g, "").length > 0;
+          if (hasVisibleText) return; // has real text, keep it
+
+          const imgs = Array.from(row.querySelectorAll("img"));
+          const hasRealImg = imgs.some((img) => !isSpacerImg(img));
+          if (hasRealImg) return; // has a real image, keep it
+
+          // No real text, no real images — this is a spacer row, remove it
+          row.remove();
         });
 
         const cleanedHtml = doc.querySelector("div")?.innerHTML || sanitized;
