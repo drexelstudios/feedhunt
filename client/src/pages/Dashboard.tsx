@@ -40,10 +40,11 @@ import ReadingPane from "@/components/ReadingPane";
 import AddFeedDialog from "@/components/AddFeedDialog";
 import FeedCreatorDialog from "@/components/FeedCreatorDialog";
 import NewsletterManager from "@/components/NewsletterManager";
+import RSSManager from "@/components/RSSManager";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, MoreHorizontal, Pencil, Trash2, Check, X, Mail } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, Check, X, Mail, Rss } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -76,6 +77,8 @@ export default function Dashboard() {
   const [isPaneOpen, setIsPaneOpen] = useState(false);
   // Newsletter manager dialog
   const [showNewsletterManager, setShowNewsletterManager] = useState(false);
+  // RSS manager dialog
+  const [showRssManager, setShowRssManager] = useState(false);
 
   const { toast } = useToast();
 
@@ -425,24 +428,17 @@ export default function Dashboard() {
 
             {/* RSS system tab — shown when RSS feeds exist */}
             {hasRssFeeds && (
-              <button
-                key="__rss__"
-                data-testid="tab-rss"
-                onClick={() => setActiveCategory("__rss__")}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all",
-                  activeCategory === "__rss__"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-                style={
-                  activeCategory === "__rss__"
-                    ? { background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }
-                    : {}
-                }
-              >
-                RSS
-              </button>
+              <div className="flex items-center">
+                <button
+                  key="__rss__"
+                  data-testid="tab-rss"
+                  onClick={() => setShowRssManager(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
+                >
+                  <Rss size={10} aria-hidden />
+                  RSS
+                </button>
+              </div>
             )}
 
             {/* Newsletters system tab — shown when newsletter feeds exist */}
@@ -621,6 +617,11 @@ export default function Dashboard() {
       <NewsletterManager
         open={showNewsletterManager}
         onOpenChange={setShowNewsletterManager}
+      />
+
+      <RSSManager
+        open={showRssManager}
+        onOpenChange={setShowRssManager}
       />
 
       {/* Delete category confirmation */}
