@@ -200,7 +200,9 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
   if (!item) return null;
 
   const isNewsletter = item.sourceType === "newsletter";
-  const heroUrl = extractResult?.hero_image_url ?? item.thumbnailUrl ?? null;
+  // Newsletters render their own header images inline in the email HTML,
+  // so suppress the extracted hero to avoid showing it twice.
+  const heroUrl = isNewsletter ? null : (extractResult?.hero_image_url ?? item.thumbnailUrl ?? null);
   const displayTitle = extractResult?.title || item.title;
   const displayByline = extractResult?.byline || item.author || null;
   const readingTime = extractResult?.reading_time_minutes ?? item.readingTimeMinutes ?? null;
