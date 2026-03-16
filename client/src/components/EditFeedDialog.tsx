@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 interface EditFeedDialogProps {
   open: boolean;
@@ -46,6 +46,29 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
     setCategory(feed.category);
     setMaxItems(feed.maxItems);
   }, [feed]);
+
+  // Re-scan (only for scraped/Feed Creator feeds — url contains /api/feed/<slug>)
+  const feedCreatorSlug = (() => {
+    try {
+      const u = new URL(feed.url);
+      const m = u.pathname.match(/\/api\/feed\/([^/]+)/);
+      return m ? m[1] : null;
+    } catch { return null; }
+  })();
+  const isScrapedFeed = !!feedCreatorSlug;
+
+  const rescanMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/scrape/rescan", { slug: feedCreatorSlug }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/feeds", feed.id, "items"] });
+      toast({ title: "Re-scan complete", description: "Feed items have been refreshed." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Re-scan failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -94,11 +117,11 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
+          <div className="flex flex-wrap gap-3">
+            <div className="space-y-1.5 flex-1 min-w-[120px]">
               <Label>Category</Label>
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger data-testid="select-edit-category">
+                <SelectTrigger data-testid="select-edit-category" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -109,10 +132,10 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
               </Select>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 w-[100px]">
               <Label>Max items</Label>
               <Select value={String(maxItems)} onValueChange={(v) => setMaxItems(Number(v))}>
-                <SelectTrigger data-testid="select-edit-max-items">
+                <SelectTrigger data-testid="select-edit-max-items" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -124,22 +147,40 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
             </div>
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <Button
-              data-testid="button-save-feed"
-              onClick={() => saveMutation.mutate()}
-              disabled={!title.trim() || saveMutation.isPending}
-              className="flex-1"
-            >
-              {saveMutation.isPending ? (
-                <><Loader2 size={14} className="animate-spin mr-2" /> Saving…</>
-              ) : (
-                "Save changes"
-              )}
-            </Button>
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
+          <div className="flex flex-col gap-2 pt-1">
+            <div className="flex gap-2">
+              <Button
+                data-testid="button-save-feed"
+                onClick={() => saveMutation.mutate()}
+                disabled={!title.trim() || saveMutation.isPending}
+                className="flex-1"
+              >
+                {saveMutation.isPending ? (
+                  <><Loader2 size={14} className="animate-spin mr-2" /> Saving…</>
+                ) : (
+                  "Save changes"
+                )}
+              </Button>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+            </div>
+            {isScrapedFeed && (
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="button-rescan-feed"
+                onClick={() => rescanMutation.mutate()}
+                disabled={rescanMutation.isPending}
+                className="w-full"
+              >
+                {rescanMutation.isPending ? (
+                  <><Loader2 size={14} className="animate-spin mr-2" /> Re-scanning…</>
+                ) : (
+                  <><RefreshCw size={14} className="mr-2" /> Re-scan feed</>  
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
