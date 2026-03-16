@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -25,6 +25,7 @@ interface AddFeedDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categories: string[];
+  initialUrl?: string;
 }
 
 interface FeedPreview {
@@ -33,7 +34,7 @@ interface FeedPreview {
   items: { title: string; pubDate: string }[];
 }
 
-export default function AddFeedDialog({ open, onOpenChange, categories }: AddFeedDialogProps) {
+export default function AddFeedDialog({ open, onOpenChange, categories, initialUrl }: AddFeedDialogProps) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("General");
@@ -78,6 +79,15 @@ export default function AddFeedDialog({ open, onOpenChange, categories }: AddFee
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
+
+  // When dialog opens with a pre-filled URL (e.g. from Feed Creator), auto-preview it
+  useEffect(() => {
+    if (open && initialUrl) {
+      setUrl(initialUrl);
+      previewMutation.mutate(initialUrl);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialUrl]);
 
   const handleClose = () => {
     setUrl("");
