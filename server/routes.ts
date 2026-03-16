@@ -732,11 +732,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/newsletter/sources", requireAuth, async (req, res) => {
     const { data, error } = await supabaseAdmin
       .from("newsletter_sources")
-      .select("*")
+      .select("*, feeds(category)")
       .eq("user_id", req.userId)
       .order("created_at", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
+    // Flatten feeds.category onto each source row
+    const sources = (data || []).map((s: any) => ({
+      ...s,
+      category: s.feeds?.category ?? "General",
+      feeds: undefined,
+    }));
+    res.json(sources);
   });
 
   // Create a newsletter source manually
@@ -800,33 +806,59 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // Update a newsletter source (display_name, is_active, item_display_limit)
   app.patch("/api/newsletter/sources/:id", requireAuth, async (req, res) => {
-    const allowed = ["display_name", "is_active", "item_display_limit"];
-    const updates: Record<string, any> = {};
-    for (const key of allowed) {
-      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    // Fields that live on newsletter_sources itself
+    const sourceFields = ["display_name", "is_active", "item_display_limit"];
+    // Fields that live on feeds (synced separately)
+    const feedOnlyFields = ["category"];
+    const sourceUpdates: Record<string, any> = {};
+    const feedOnlyUpdates: Record<string, any> = {};
+    for (const key of sourceFields) {
+      if (req.body[key] !== undefined) sourceUpdates[key] = req.body[key];
     }
-    if (!Object.keys(updates).length) {
+    for (const key of feedOnlyFields) {
+      if (req.body[key] !== undefined) feedOnlyUpdates[key] = req.body[key];
+    }
+    if (!Object.keys(sourceUpdates).length && !Object.keys(feedOnlyUpdates).length) {
       return res.status(400).json({ error: "No valid fields" });
     }
-    const { data, error } = await supabaseAdmin
-      .from("newsletter_sources")
-      .update(updates)
-      .eq("id", req.params.id)
-      .eq("user_id", req.userId)
-      .select()
-      .single();
-    if (error) return res.status(500).json({ error: error.message });
-    if (!data) return res.status(404).json({ error: "Not found" });
 
-    // Sync item_display_limit to feeds.max_items if changed
-    if (updates.item_display_limit !== undefined && data.feed_id) {
+    let data: any = null;
+    // Only update newsletter_sources if there are source-level fields
+    if (Object.keys(sourceUpdates).length) {
+      const { data: updated, error } = await supabaseAdmin
+        .from("newsletter_sources")
+        .update(sourceUpdates)
+        .eq("id", req.params.id)
+        .eq("user_id", req.userId)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      data = updated;
+    } else {
+      // Fetch the source just for feed_id
+      const { data: found, error } = await supabaseAdmin
+        .from("newsletter_sources")
+        .select("*")
+        .eq("id", req.params.id)
+        .eq("user_id", req.userId)
+        .single();
+      if (error || !found) return res.status(404).json({ error: "Not found" });
+      data = found;
+    }
+
+    // Sync to feeds: item_display_limit → max_items, category → category
+    const feedUpdates: Record<string, any> = {};
+    if (sourceUpdates.item_display_limit !== undefined) feedUpdates.max_items = sourceUpdates.item_display_limit;
+    if (feedOnlyUpdates.category !== undefined) feedUpdates.category = feedOnlyUpdates.category;
+    if (Object.keys(feedUpdates).length && data.feed_id) {
       await supabaseAdmin
         .from("feeds")
-        .update({ max_items: updates.item_display_limit })
+        .update(feedUpdates)
         .eq("id", data.feed_id)
         .eq("user_id", req.userId);
     }
-    res.json(data);
+    res.json({ ...data, category: feedOnlyUpdates.category ?? data.category });
   });
 
   // Delete a newsletter source (preserves feed_items — archive intact)
