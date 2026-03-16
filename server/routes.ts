@@ -540,14 +540,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
           FORCE_BODY: true,
         });
 
-        // ── Strip structural/boilerplate borders from table elements ───────────
+        // ── Strip structural/boilerplate borders from ALL email elements ────────
         // Many email senders (1440, Morning Brew, etc.) use border="1" HTML
-        // attributes AND inline style="border:..." on nested tables for Outlook
-        // compatibility. Strip both so they don't render as nested boxes.
+        // attributes AND inline style="border:..." on nested tables AND divs
+        // for Outlook compatibility. Strip from every element so nested boxes
+        // don't render. Email HTML is not a design system we need to preserve.
         const cleanDom = new JSDOM(`<div>${sanitized}</div>`);
-        const tableEls = cleanDom.window.document.querySelectorAll("table, tr, td, th");
-        tableEls.forEach((el: Element) => {
-          // Remove HTML border attribute
+        const allEls = cleanDom.window.document.querySelectorAll("table, tr, td, th, div, span, p, h1, h2, h3, h4, h5, h6, a");
+        allEls.forEach((el: Element) => {
+          // Remove HTML border attribute (tables only, safe to try all)
           el.removeAttribute("border");
           // Strip border-related properties from inline styles
           const style = (el as HTMLElement).style;
@@ -560,6 +561,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
             style.removeProperty("border-width");
             style.removeProperty("border-style");
             style.removeProperty("border-color");
+            style.removeProperty("border-radius");
             style.removeProperty("outline");
           }
         });
