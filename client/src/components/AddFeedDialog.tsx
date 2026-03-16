@@ -26,6 +26,7 @@ interface AddFeedDialogProps {
   onOpenChange: (open: boolean) => void;
   categories: string[];
   initialUrl?: string;
+  initialTitle?: string;
 }
 
 interface FeedPreview {
@@ -34,7 +35,7 @@ interface FeedPreview {
   items: { title: string; pubDate: string }[];
 }
 
-export default function AddFeedDialog({ open, onOpenChange, categories, initialUrl }: AddFeedDialogProps) {
+export default function AddFeedDialog({ open, onOpenChange, categories, initialUrl, initialTitle }: AddFeedDialogProps) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("General");
@@ -80,14 +81,22 @@ export default function AddFeedDialog({ open, onOpenChange, categories, initialU
     },
   });
 
-  // When dialog opens with a pre-filled URL (e.g. from Feed Creator), auto-preview it
+  // When dialog opens with a pre-filled URL (e.g. from Feed Creator):
+  // If we also have a title, skip the RSS preview (Feed Creator URLs are on Vercel
+  // preview deployments which are auth-protected — rss-parser would get a 401).
+  // Just pre-fill the URL and title directly.
   useEffect(() => {
     if (open && initialUrl) {
       setUrl(initialUrl);
-      previewMutation.mutate(initialUrl);
+      if (initialTitle) {
+        // Skip preview — use the title we already have from the scan result
+        setTitle(initialTitle);
+      } else {
+        previewMutation.mutate(initialUrl);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialUrl]);
+  }, [open, initialUrl, initialTitle]);
 
   const handleClose = () => {
     setUrl("");
