@@ -548,7 +548,9 @@ body {
   background-color: transparent !important;
   background-image: none !important;
 }
-/* Collapse fixed heights that email spacer rows use for vertical gaps */
+/* Collapse fixed heights and vertical padding that email spacer rows use for gaps.
+   Emails use height="30", style="height:30px", font-size:30px, and padding:30px
+   as spacing mechanisms. Override all of them. */
 .reading-pane__body--newsletter tr,
 .reading-pane__body--newsletter td,
 .reading-pane__body--newsletter th {
@@ -556,6 +558,8 @@ body {
   min-height: 0 !important;
   line-height: normal !important;
   font-size: inherit !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
 }
 /* Hide tiny spacer/tracking images (width or height ≤ 4px) */
 .reading-pane__body--newsletter img[width="1"],
