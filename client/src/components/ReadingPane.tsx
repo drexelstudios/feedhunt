@@ -369,10 +369,8 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               <FallbackState url={externalUrl || item.link} error={extractResult.error} />
             )}
 
-            {/* Article body
-                NOTE: DOMPurify sanitized server-side in /api/extract before Supabase storage.
-                This is safe to render as HTML. */}
-            {!loading && extractResult && !extractResult.fallback && extractResult.content && (
+            {/* Article body — RSS only (newsletters render outside __inner below) */}
+            {!isNewsletter && !loading && extractResult && !extractResult.fallback && extractResult.content && (
               <div
                 className="reading-pane__body"
                 // eslint-disable-next-line react/no-danger
@@ -380,15 +378,33 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               />
             )}
 
-            {/* Footer — only show "Read original" when there's an external URL */}
-            {!loading && externalUrl && (
+            {/* Footer — only show "Read original" when there's an external URL (RSS only) */}
+            {!isNewsletter && !loading && externalUrl && (
               <div className="reading-pane__footer">
                 <a href={externalUrl} target="_blank" rel="noopener noreferrer">
-                  {isNewsletter ? "View online →" : "Read original article →"}
+                  Read original article →
                 </a>
               </div>
             )}
           </div>
+
+          {/* Newsletter body — full-width, no extra padding (email HTML manages its own spacing) */}
+          {isNewsletter && !loading && extractResult && !extractResult.fallback && extractResult.content && (
+            <div
+              className="reading-pane__body reading-pane__body--newsletter"
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: extractResult.content }}
+            />
+          )}
+
+          {/* Newsletter footer */}
+          {isNewsletter && !loading && externalUrl && (
+            <div className="reading-pane__footer" style={{ padding: "var(--space-4) var(--space-6)" }}>
+              <a href={externalUrl} target="_blank" rel="noopener noreferrer">
+                View online →
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
