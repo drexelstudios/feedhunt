@@ -555,19 +555,25 @@ body {
 /* Collapse fixed heights and vertical padding that email spacer rows use for gaps.
    Emails use height="30", style="height:30px", font-size:30px, and padding:30px
    as spacing mechanisms. Override all of them.
-   Also target div — many newsletters (Morning Brew, 1440) use <div style="padding:30px"> */
+   div: only collapse height/padding — NOT font-size or margins, which break email layouts.
+   tr/td/th: also reset line-height and font-size (used as invisible spacer tricks in table cells). */
 .reading-pane__body--newsletter tr,
 .reading-pane__body--newsletter td,
-.reading-pane__body--newsletter th,
-.reading-pane__body--newsletter div {
+.reading-pane__body--newsletter th {
   height: auto !important;
   min-height: 0 !important;
   line-height: normal !important;
   font-size: inherit !important;
   padding-top: 4px !important;
   padding-bottom: 4px !important;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
+}
+/* For div: collapse height and cap padding, but leave font-size and margins alone —
+   email divs use font-size for actual text, and margins for intentional section spacing. */
+.reading-pane__body--newsletter div {
+  height: auto !important;
+  min-height: 0 !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
 }
 /* Hide tiny spacer/tracking images (width or height ≤ 4px) */
 .reading-pane__body--newsletter img[width="1"],
