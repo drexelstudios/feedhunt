@@ -526,8 +526,16 @@ body {
 .reading-pane__reading-time { display: flex; align-items: center; gap: 4px; }
 .reading-pane__excerpt { font-size: var(--text-sm); color: hsl(var(--muted-foreground)); line-height: 1.6; margin-bottom: var(--space-4); font-style: italic; }
 .reading-pane__body { font-size: 17px; line-height: 1.75; color: hsl(var(--foreground)); }
-/* Newsletter emails manage their own spacing — render full-width with no added margins */
+/* Newsletter emails — force all tables to stretch full-width, remove centering margins */
 .reading-pane__body--newsletter { font-size: inherit; line-height: inherit; overflow-x: hidden; }
+.reading-pane__body--newsletter table {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+.reading-pane__body--newsletter img { max-width: 100% !important; height: auto !important; }
+.reading-pane__body--newsletter center { width: 100% !important; display: block; }
 @media (max-width: 767px) { .reading-pane__body { font-size: 16px; line-height: 1.7; } }
 .reading-pane__body p { margin-bottom: 1.25em; }
 .reading-pane__body h1,.reading-pane__body h2,.reading-pane__body h3,
