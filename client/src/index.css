@@ -534,6 +534,18 @@ body {
   margin-left: 0 !important;
   margin-right: 0 !important;
 }
+/* Strip HTML-attribute borders on tables (Outlook-compat boilerplate like border="1").
+   These appear as nested box outlines in senders like 1440. CSS-defined borders are unaffected. */
+.reading-pane__body--newsletter table[border],
+.reading-pane__body--newsletter td[border] {
+  border: 0 !important;
+  outline: none !important;
+}
+/* Also strip common email-boilerplate spacing attributes via CSS */
+.reading-pane__body--newsletter table[cellpadding],
+.reading-pane__body--newsletter table[cellspacing] {
+  border-collapse: collapse !important;
+}
 .reading-pane__body--newsletter img { max-width: 100% !important; height: auto !important; }
 .reading-pane__body--newsletter center { width: 100% !important; display: block; }
 @media (max-width: 767px) { .reading-pane__body { font-size: 16px; line-height: 1.7; } }
