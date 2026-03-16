@@ -2,6 +2,7 @@
  * NewsletterManager — Newsletter source management UI
  *
  * Lists all newsletter sources with per-source controls:
+ *   - Category assignment
  *   - Display limit (5 / 10 / 25 / 50 / All)
  *   - Active toggle
  *   - Delete button
@@ -21,7 +22,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -39,7 +39,6 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -52,9 +51,15 @@ interface NewsletterSource {
   display_name: string | null;
   is_active: boolean;
   item_display_limit: number;
+  category: string;
   created_at: string;
   last_received_at: string | null;
   item_count: number;
+}
+
+interface Category {
+  id: number;
+  name: string;
 }
 
 interface NewsletterManagerProps {
@@ -90,6 +95,12 @@ export default function NewsletterManager({ open, onOpenChange }: NewsletterMana
     staleTime: 30_000,
   });
 
+  const { data: categoryData = [] } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+    enabled: open,
+  });
+  const categories = categoryData.map((c) => c.name);
+
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   const addMutation = useMutation({
@@ -104,7 +115,6 @@ export default function NewsletterManager({ open, onOpenChange }: NewsletterMana
       toast({ title: "Source added", description: "It will appear in your feed once newsletters arrive." });
     },
     onError: async (err: any) => {
-      // Try to parse the error body
       let msg = err?.message || "Failed to add source";
       try {
         if (err?.response) {
@@ -183,6 +193,10 @@ export default function NewsletterManager({ open, onOpenChange }: NewsletterMana
   const handleLimitChange = (source: NewsletterSource, value: string) => {
     const limit = parseInt(value, 10);
     patchMutation.mutate({ id: source.id, updates: { item_display_limit: limit } });
+  };
+
+  const handleCategoryChange = (source: NewsletterSource, category: string) => {
+    patchMutation.mutate({ id: source.id, updates: { category } });
   };
 
   const handleDelete = (source: NewsletterSource) => {
@@ -277,8 +291,10 @@ export default function NewsletterManager({ open, onOpenChange }: NewsletterMana
                 <SourceRow
                   key={source.id}
                   source={source}
+                  categories={categories}
                   onToggleActive={handleToggleActive}
                   onLimitChange={handleLimitChange}
+                  onCategoryChange={handleCategoryChange}
                   onDelete={handleDelete}
                 />
               ))}
@@ -337,104 +353,141 @@ export default function NewsletterManager({ open, onOpenChange }: NewsletterMana
 
 function SourceRow({
   source,
+  categories,
   onToggleActive,
   onLimitChange,
+  onCategoryChange,
   onDelete,
 }: {
   source: NewsletterSource;
+  categories: string[];
   onToggleActive: (s: NewsletterSource) => void;
   onLimitChange: (s: NewsletterSource, v: string) => void;
+  onCategoryChange: (s: NewsletterSource, v: string) => void;
   onDelete: (s: NewsletterSource) => void;
 }) {
   const displayName = source.display_name || source.sender_name || source.sender_email;
+  // Merge user categories with General as fallback; deduplicate
+  const allCategories = Array.from(new Set(["General", ...categories]));
+  const currentCategory = source.category || "General";
 
   return (
-    <li className="flex items-start gap-3 py-3">
-      {/* Avatar */}
-      <div
-        className="flex-shrink-0 rounded-full flex items-center justify-center"
-        style={{
-          width: 32,
-          height: 32,
-          background: "hsl(var(--accent))",
-          color: "hsl(var(--muted-foreground))",
-        }}
-      >
-        <Mail size={14} />
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
+    <li className="py-3">
+      {/* Top row: avatar + name + controls */}
+      <div className="flex items-center gap-3">
+        {/* Avatar */}
         <div
-          className="font-medium truncate"
-          style={{ fontSize: "var(--text-sm)", color: "hsl(var(--foreground))" }}
+          className="flex-shrink-0 rounded-full flex items-center justify-center"
+          style={{
+            width: 32,
+            height: 32,
+            background: "hsl(var(--accent))",
+            color: "hsl(var(--muted-foreground))",
+          }}
         >
-          {displayName}
+          <Mail size={14} />
         </div>
-        {source.display_name && source.sender_email !== displayName && (
+
+        {/* Name + meta */}
+        <div className="flex-1 min-w-0">
           <div
-            className="truncate"
+            className="font-medium truncate"
+            style={{ fontSize: "var(--text-sm)", color: "hsl(var(--foreground))" }}
+          >
+            {displayName}
+          </div>
+          {source.display_name && source.sender_email !== displayName && (
+            <div
+              className="truncate"
+              style={{ fontSize: "var(--text-xs)", color: "hsl(var(--muted-foreground))" }}
+            >
+              {source.sender_email}
+            </div>
+          )}
+          <div
+            className="flex items-center gap-2 mt-0.5"
             style={{ fontSize: "var(--text-xs)", color: "hsl(var(--muted-foreground))" }}
           >
-            {source.sender_email}
+            {source.item_count > 0 && (
+              <span>{source.item_count} email{source.item_count !== 1 ? "s" : ""}</span>
+            )}
+            {source.last_received_at && (
+              <>
+                {source.item_count > 0 && <span>·</span>}
+                <span>Last: {timeAgo(source.last_received_at)}</span>
+              </>
+            )}
           </div>
-        )}
-        <div
-          className="flex items-center gap-2 mt-0.5"
-          style={{ fontSize: "var(--text-xs)", color: "hsl(var(--muted-foreground))" }}
-        >
-          {source.item_count > 0 && (
-            <span>{source.item_count} email{source.item_count !== 1 ? "s" : ""}</span>
-          )}
-          {source.last_received_at && (
-            <>
-              {source.item_count > 0 && <span>·</span>}
-              <span>Last: {timeAgo(source.last_received_at)}</span>
-            </>
-          )}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Display limit */}
+          <Select
+            value={String(source.item_display_limit)}
+            onValueChange={(v) => onLimitChange(source, v)}
+          >
+            <SelectTrigger
+              className="h-7 text-xs w-16"
+              data-testid={`select-limit-${source.id}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LIMIT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Active toggle */}
+          <Switch
+            data-testid={`switch-active-${source.id}`}
+            checked={source.is_active}
+            onCheckedChange={() => onToggleActive(source)}
+            aria-label={`${source.is_active ? "Disable" : "Enable"} ${displayName}`}
+          />
+
+          {/* Delete */}
+          <button
+            data-testid={`button-delete-source-${source.id}`}
+            onClick={() => onDelete(source)}
+            className="p-1 rounded transition-colors hover:bg-destructive/20"
+            style={{ color: "hsl(var(--muted-foreground))" }}
+            title="Remove source"
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Display limit */}
+      {/* Category row — sits below the main row, indented to align with name */}
+      <div className="flex items-center gap-2 mt-2 pl-11">
+        <span
+          style={{ fontSize: "var(--text-xs)", color: "hsl(var(--muted-foreground))", flexShrink: 0 }}
+        >
+          Category
+        </span>
         <Select
-          value={String(source.item_display_limit)}
-          onValueChange={(v) => onLimitChange(source, v)}
+          value={currentCategory}
+          onValueChange={(v) => onCategoryChange(source, v)}
         >
           <SelectTrigger
-            className="h-7 text-xs w-16"
-            data-testid={`select-limit-${source.id}`}
+            className="h-6 text-xs flex-1 max-w-[160px]"
+            data-testid={`select-category-${source.id}`}
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {LIMIT_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={String(opt.value)} className="text-xs">
-                {opt.label}
+            {allCategories.map((cat) => (
+              <SelectItem key={cat} value={cat} className="text-xs">
+                {cat}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-
-        {/* Active toggle */}
-        <Switch
-          data-testid={`switch-active-${source.id}`}
-          checked={source.is_active}
-          onCheckedChange={() => onToggleActive(source)}
-          aria-label={`${source.is_active ? "Disable" : "Enable"} ${displayName}`}
-        />
-
-        {/* Delete */}
-        <button
-          data-testid={`button-delete-source-${source.id}`}
-          onClick={() => onDelete(source)}
-          className="p-1 rounded transition-colors hover:bg-destructive/20"
-          style={{ color: "hsl(var(--muted-foreground))" }}
-          title="Remove source"
-        >
-          <Trash2 size={13} />
-        </button>
       </div>
     </li>
   );
