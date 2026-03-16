@@ -534,9 +534,8 @@ body {
   margin-left: 0 !important;
   margin-right: 0 !important;
 }
-/* Neutralise ALL borders — attribute-based and inline-style-based.
-   Email senders (1440, Morning Brew) use border="1", border-color, outline,
-   and bgcolor-contrast tricks to fake nested boxes for Outlook compat. */
+/* Neutralise ALL borders and collapse spacer rows — email senders use
+   border="1", bgcolor contrast, and fixed-height empty rows for Outlook compat. */
 .reading-pane__body--newsletter table,
 .reading-pane__body--newsletter tr,
 .reading-pane__body--newsletter td,
@@ -549,8 +548,24 @@ body {
   background-color: transparent !important;
   background-image: none !important;
 }
-/* Re-allow background on img wrappers that need colour (e.g. logo bg) — keep
-   visible coloured backgrounds on <p> and heading elements for callouts */
+/* Collapse email spacer rows: override fixed heights on table structural elements.
+   Spacer rows use height="30" or style="height:30px" to force vertical gaps —
+   capping at max-height:0 with overflow:hidden collapses them to nothing. */
+.reading-pane__body--newsletter tr {
+  height: auto !important;
+  max-height: none !important;
+  line-height: normal !important;
+}
+.reading-pane__body--newsletter td,
+.reading-pane__body--newsletter th {
+  height: auto !important;
+}
+/* Hide 1px spacer/tracking images entirely */
+.reading-pane__body--newsletter img[width="1"],
+.reading-pane__body--newsletter img[height="1"] {
+  display: none !important;
+}
+/* Re-allow coloured backgrounds on text content elements (callout boxes etc) */
 .reading-pane__body--newsletter p,
 .reading-pane__body--newsletter h1,
 .reading-pane__body--newsletter h2,
