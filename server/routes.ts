@@ -546,9 +546,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
         // for Outlook compatibility. Strip from every element so nested boxes
         // don't render. Email HTML is not a design system we need to preserve.
         const cleanDom = new JSDOM(`<div>${sanitized}</div>`);
-        const allEls = cleanDom.window.document.querySelectorAll("table, tr, td, th, div, span, p, h1, h2, h3, h4, h5, h6, a");
+        const doc = cleanDom.window.document;
+
+        // ── Pass 1: strip borders, bgcolor, and spacer dimensions ───────────
+        const allEls = doc.querySelectorAll("table, tr, td, th, div, span, p, h1, h2, h3, h4, h5, h6, a");
         allEls.forEach((el: Element) => {
-          // Remove HTML border/bgcolor attributes
+          // Remove HTML border/bgcolor/background attributes
           el.removeAttribute("border");
           el.removeAttribute("bgcolor");
           el.removeAttribute("background");
@@ -565,9 +568,34 @@ export function registerRoutes(httpServer: Server, app: Express) {
             style.removeProperty("border-color");
             style.removeProperty("border-radius");
             style.removeProperty("outline");
+            // Also strip explicit height from structural elements —
+            // email spacer rows use height="20" / style="height:20px" to add
+            // vertical gaps that look excessive once backgrounds are removed.
+            const tag = el.tagName.toLowerCase();
+            if (["table", "tr", "td", "th"].includes(tag)) {
+              el.removeAttribute("height");
+              style.removeProperty("height");
+              style.removeProperty("line-height");
+              style.removeProperty("font-size"); // tiny invisible spacer fonts
+            }
           }
         });
-        const cleanedHtml = cleanDom.window.document.querySelector("div")?.innerHTML || sanitized;
+
+        // ── Pass 2: remove pure spacer rows (no visible text or images) ──────
+        // A <tr> is a spacer if all its <td> children contain only whitespace /
+        // &nbsp; and no <img> elements.
+        const rows = Array.from(doc.querySelectorAll("tr"));
+        rows.forEach((row) => {
+          const tds = Array.from(row.querySelectorAll("td"));
+          if (tds.length === 0) return;
+          const hasImg = row.querySelector("img") !== null;
+          if (hasImg) return;
+          const textContent = row.textContent || "";
+          const isBlank = textContent.replace(/[\u00a0\s]/g, "").length === 0;
+          if (isBlank) row.remove();
+        });
+
+        const cleanedHtml = doc.querySelector("div")?.innerHTML || sanitized;
 
         // Extract thumbnail from first image (for hero display).
         // Skip tracking pixels (width=1, height=1, or common tracking URL patterns).
