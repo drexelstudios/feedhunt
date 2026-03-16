@@ -62,7 +62,7 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
       apiRequest("POST", "/api/scrape/rescan", { slug: feedCreatorSlug }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/feeds", feed.id, "items"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/feeds/${feed.id}/items`] });
       toast({ title: "Re-scan complete", description: "Feed items have been refreshed." });
     },
     onError: (err: Error) => {
@@ -85,7 +85,7 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-md overflow-hidden" data-testid={`dialog-edit-feed-${feed.id}`}>
+      <DialogContent className="max-w-md" data-testid={`dialog-edit-feed-${feed.id}`}>
         <DialogHeader>
           <DialogTitle style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}>
             Edit Feed
