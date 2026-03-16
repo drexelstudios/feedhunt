@@ -916,22 +916,33 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     let activeFeedId = feedId;
 
-    // If no feedId provided, create a new scraped_feed record
+    // If no feedId provided, check for existing record first (dedup by source_url)
     if (!activeFeedId) {
-      const baseSlug = generateSlug(url);
-      const slug = await uniqueSlug(baseSlug);
-      const { data, error } = await supabaseAdmin
+      const { data: existing } = await supabaseAdmin
         .from("scraped_feeds")
-        .insert({
-          user_id: req.userId,
-          source_url: url,
-          feed_slug: slug,
-          site_title: new URL(url).hostname,
-        })
-        .select()
-        .single();
-      if (error) return res.status(500).json({ error: error.message });
-      activeFeedId = data.id;
+        .select("id")
+        .eq("user_id", req.userId)
+        .eq("source_url", url)
+        .maybeSingle();
+
+      if (existing) {
+        activeFeedId = existing.id;
+      } else {
+        const baseSlug = generateSlug(url);
+        const slug = await uniqueSlug(baseSlug);
+        const { data, error } = await supabaseAdmin
+          .from("scraped_feeds")
+          .insert({
+            user_id: req.userId,
+            source_url: url,
+            feed_slug: slug,
+            site_title: new URL(url).hostname,
+          })
+          .select()
+          .single();
+        if (error) return res.status(500).json({ error: error.message });
+        activeFeedId = data.id;
+      }
     }
 
     const result = await scrapeFeed(url, activeFeedId, req.userId!);
