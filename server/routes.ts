@@ -548,9 +548,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
         const cleanDom = new JSDOM(`<div>${sanitized}</div>`);
         const allEls = cleanDom.window.document.querySelectorAll("table, tr, td, th, div, span, p, h1, h2, h3, h4, h5, h6, a");
         allEls.forEach((el: Element) => {
-          // Remove HTML border attribute (tables only, safe to try all)
+          // Remove HTML border/bgcolor attributes
           el.removeAttribute("border");
-          // Strip border-related properties from inline styles
+          el.removeAttribute("bgcolor");
+          el.removeAttribute("background");
+          // Strip border-related CSS from inline styles
           const style = (el as HTMLElement).style;
           if (style) {
             style.removeProperty("border");
