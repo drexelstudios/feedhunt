@@ -360,6 +360,36 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             </div>
           </section>
 
+          {/* Container width */}
+          <section style={{ marginBottom: "var(--space-6)" }}>
+            <SectionLabel>Container Width</SectionLabel>
+            <div style={{ display: "flex", gap: "var(--space-2)" }}>
+              {(["default", "wide"] as const).map((value) => (
+                <button
+                  key={value}
+                  onClick={() => updateDraft({ containerWidth: value })}
+                  style={{
+                    flex: 1,
+                    padding: "var(--space-2) var(--space-3)",
+                    borderRadius: "var(--radius-sm)",
+                    border: `2px solid ${
+                      draft.containerWidth === value ? "hsl(var(--primary))" : "hsl(var(--border))"
+                    }`,
+                    background: draft.containerWidth === value ? "hsl(var(--accent))" : "hsl(var(--card))",
+                    color: draft.containerWidth === value
+                      ? "hsl(var(--accent-foreground))"
+                      : "hsl(var(--muted-foreground))",
+                    fontSize: "var(--text-xs)", fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 160ms ease",
+                  }}
+                >
+                  {value === "default" ? "Default (1400px)" : "Large (1920px)"}
+                </button>
+              ))}
+            </div>
+          </section>
+
         </div>
 
         {/* Footer */}
@@ -371,7 +401,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           flexShrink: 0,
         }}>
           <button
-            onClick={() => updateDraft({ themeId: "default", fontScale: 1, readingWidth: "default" })}
+            onClick={() => updateDraft({ themeId: "default", fontScale: 1, readingWidth: "default", containerWidth: "default" })}
             style={{
               flex: 1, height: 36,
               borderRadius: "var(--radius-sm)",
@@ -406,3 +436,5 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     </>
   );
 }
+
+SHA: 19500b04c174103a3bb45a5ccda23efd0870d3b7
