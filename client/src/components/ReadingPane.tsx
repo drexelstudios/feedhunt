@@ -226,29 +226,60 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     } catch { /* silent */ }
   }, [item]);
 
-  // ── iframe auto-resize ───────────────────────────────────────────────────────
-  // Reads scrollHeight from the iframe's content document and sets the iframe
-  // height to match, eliminating internal scrollbars. Runs on load and on a
-  // short delay (images may finish loading after the initial onLoad fires).
+  // ── iframe scale-to-fit + auto-height ───────────────────────────────────────
+  // Email HTML is designed for ~600px wide viewports. When the reading pane is
+  // narrower (tablet/mobile), we scale the iframe down proportionally using
+  // CSS transform — the same technique Gmail mobile uses. This preserves the
+  // email's intended layout without reflowing its table-based structure.
+  //
+  // Steps:
+  //   1. Let the iframe render at its natural content width
+  //   2. Compute scale = pane width / content width  (≤ 1 — never upscale)
+  //   3. Apply transform: scale(scale) with transform-origin: top left
+  //   4. Set the wrapper height to contentHeight * scale so no gap appears below
   const resizeIframe = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    const resize = () => {
+
+    const fit = () => {
       try {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc) return;
-        // Reset to auto first so shrinking works correctly
-        iframe.style.height = "0px";
-        const h = doc.documentElement.scrollHeight || doc.body?.scrollHeight || 0;
-        iframe.style.height = `${h}px`;
+        if (!doc || !doc.body) return;
+
+        // Reset transform so we read the true natural dimensions
+        iframe.style.transform = "";
+        iframe.style.width = "100%";
+
+        // Natural content width (the email's own layout width, often 600px)
+        const naturalW = doc.documentElement.scrollWidth || doc.body.scrollWidth || 600;
+        // Container (pane) width
+        const containerW = iframe.parentElement?.clientWidth || naturalW;
+
+        const scale = containerW >= naturalW ? 1 : containerW / naturalW;
+
+        // Pin iframe to its natural width so the email doesn't reflow
+        iframe.style.width = `${naturalW}px`;
+
+        // Natural content height at full width
+        const naturalH = doc.documentElement.scrollHeight || doc.body.scrollHeight || 0;
+
+        // Apply proportional scale from the top-left corner
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.transformOrigin = "top left";
+        iframe.style.height = `${naturalH}px`;
+
+        // Collapse the wrapper to the visually-scaled height so no blank gap below
+        const wrapper = iframe.parentElement as HTMLElement | null;
+        if (wrapper) wrapper.style.height = `${Math.ceil(naturalH * scale)}px`;
       } catch {
         // Cross-origin guard — shouldn't happen with srcdoc but be safe
       }
     };
-    resize();
-    // Re-run after images load
-    setTimeout(resize, 300);
-    setTimeout(resize, 1200);
+
+    fit();
+    // Re-run after images/fonts finish loading
+    setTimeout(fit, 300);
+    setTimeout(fit, 1200);
   }, []);
 
   if (!item) return null;
@@ -445,25 +476,34 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
           {/* Newsletter body — sandboxed iframe so the app's CSS never bleeds in.
               srcdoc receives the full email HTML (already DOMPurify-sanitized server-side).
               sandbox="allow-same-origin allow-popups":
-                - allow-same-origin: lets us read scrollHeight for auto-resize
+                - allow-same-origin: lets us read scrollWidth/scrollHeight for scaling
                 - allow-popups: lets links open in a new tab
-                - scripts intentionally blocked (no allow-scripts) */}
+                - scripts intentionally blocked (no allow-scripts)
+              The wrapper div receives a dynamic height from resizeIframe so the
+              scaled-down content doesn't leave a blank gap below it. */}
           {isNewsletter && !loading && extractResult && !extractResult.fallback && extractResult.content && (
-            <iframe
-              ref={iframeRef}
-              title="Newsletter content"
-              sandbox="allow-same-origin allow-popups"
-              srcDoc={buildNewsletterSrcdoc(extractResult.content)}
+            <div
               style={{
                 width: "100%",
-                border: "none",
-                display: "block",
-                // Height starts at 0; resizeIframe sets it after load
-                height: "0px",
                 overflow: "hidden",
+                // Height set dynamically by resizeIframe to match the scaled content
+                height: "0px",
               }}
-              onLoad={resizeIframe}
-            />
+            >
+              <iframe
+                ref={iframeRef}
+                title="Newsletter content"
+                sandbox="allow-same-origin allow-popups"
+                srcDoc={buildNewsletterSrcdoc(extractResult.content)}
+                style={{
+                  border: "none",
+                  display: "block",
+                  // width, height, transform all set dynamically by resizeIframe
+                  transformOrigin: "top left",
+                }}
+                onLoad={resizeIframe}
+              />
+            </div>
           )}
 
           {/* Newsletter footer */}
