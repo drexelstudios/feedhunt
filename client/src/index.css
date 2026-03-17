@@ -4,12 +4,12 @@
 
 /* ── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
-  /* Type */
-  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
-  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
-  --text-base: clamp(1rem,     0.95rem + 0.25vw, 1.125rem);
-  --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);
-  --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);
+  /* Type — multiplied by --font-scale so the settings panel can resize all text */
+  --text-xs:   calc(clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem) * var(--font-scale));
+  --text-sm:   calc(clamp(0.875rem, 0.8rem  + 0.35vw, 1rem)     * var(--font-scale));
+  --text-base: calc(clamp(1rem,     0.95rem + 0.25vw, 1.125rem)  * var(--font-scale));
+  --text-lg:   calc(clamp(1.125rem, 1rem    + 0.75vw, 1.5rem)    * var(--font-scale));
+  --text-xl:   calc(clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem)   * var(--font-scale));
 
   /* Spacing */
   --space-1:  0.25rem;
@@ -36,6 +36,10 @@
 
   /* Transition */
   --transition-interactive: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Settings overrides — written by ThemeProvider at runtime */
+  --font-scale: 1;
+  --reading-pane-inner-max-width: 680px;
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
@@ -504,7 +508,7 @@ body {
 
 /* ── Scrollable area ───────────────────────────────────────────────────────── */
 .reading-pane__scroll { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
-.reading-pane__inner { max-width: 680px; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8); }
+.reading-pane__inner { max-width: var(--reading-pane-inner-max-width, 680px); margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8); }
 /* Newsletters render their body OUTSIDE __inner, so remove the bottom padding
    that would otherwise create a visible gap between the meta section and the email HTML. */
 .reading-pane__inner--newsletter { padding-bottom: var(--space-3) !important; }
