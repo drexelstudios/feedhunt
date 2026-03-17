@@ -1,13 +1,21 @@
 /**
- * ReadingPane — Phases 5, 7, 8
+ * ReadingPane — Phases 5, 7, 8 + resizable pane (Phase 9)
  *
  * A single component that renders as:
- *   - Desktop (>1024px): fixed 480px side pane sliding in from the right
- *   - Tablet (768–1024px): fixed 420px side pane
+ *   - Desktop (>1024px): fixed side pane sliding in from the right, user-resizable
+ *   - Tablet (768–1024px): fixed side pane, capped at 420px
  *   - Mobile (<768px): full-screen push view (role="dialog")
  *
+ * Resizing:
+ *   - A 6px drag handle sits on the left edge of the pane
+ *   - Dragging updates --reading-pane-width on documentElement immediately (no React state)
+ *   - On pointerup the final width is committed to UserPrefs via savePrefs()
+ *   - paneWidth is clamped: min 320px, max 60vw
+ *   - A ResizeObserver on the iframe container retriggers scale-to-fit whenever
+ *     the pane width changes (covers both resize-drag and window resize)
+ *
  * Content is loaded on demand via /api/extract, then cached in Supabase feed_items.
- * DOMPurify already ran server-side before body_html was stored — noted in comment.
+ * DOMPurify already ran server-side before body_html was stored.
  *
  * Newsletter items: body_html is pre-stored at IMAP fetch time. When item.sourceType
  * === 'newsletter' and item.hasBody === true, we serve the cached body directly from
@@ -20,6 +28,7 @@ import type { EnrichedFeedItem } from "@/components/FeedWidget";
 import { X, ExternalLink, ArrowLeft, Share2, Clock, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFaviconUrl } from "@/lib/utils";
+import { useTheme } from "@/components/ThemeProvider";
 
 interface ReadingPaneProps {
   item: EnrichedFeedItem | null;
@@ -38,17 +47,14 @@ interface ExtractResult {
   error?: string;
 }
 
+const PANE_MIN_WIDTH = 320;
+const PANE_MAX_RATIO = 0.6; // 60vw
+
 /**
  * Wraps raw email HTML in a minimal document so the iframe renders correctly.
  * Injects an img-constrain style to prevent wide images from causing horizontal scroll.
- * The sandbox="allow-same-origin allow-popups" attribute means:
- *   - Links open in a new tab (allow-popups)
- *   - The srcdoc can read its own DOM (allow-same-origin, needed for resize)
- *   - Scripts are blocked (no allow-scripts) — intentional security boundary
  */
 function buildNewsletterSrcdoc(html: string): string {
-  // If the email already has a full <html> document, inject our style into <head>.
-  // Otherwise wrap the fragment in a minimal document.
   const hasHtmlTag = /<html[\s>]/i.test(html);
   const styleTag = `<style>
     img { max-width: 100% !important; height: auto !important; }
@@ -56,7 +62,6 @@ function buildNewsletterSrcdoc(html: string): string {
   </style>`;
 
   if (hasHtmlTag) {
-    // Inject before </head> if present, else right after <html>
     if (/<\/head>/i.test(html)) {
       return html.replace(/<\/head>/i, `${styleTag}</head>`);
     }
@@ -67,14 +72,18 @@ function buildNewsletterSrcdoc(html: string): string {
 }
 
 export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps) {
+  const { prefs, savePrefs } = useTheme();
+
   const [extractResult, setExtractResult] = useState<ExtractResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
+
   const paneRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const lastItemIdRef = useRef<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeWrapperRef = useRef<HTMLDivElement>(null);
 
   // Mobile swipe tracking
   const touchStartX = useRef(0);
@@ -82,12 +91,15 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
   const touchCurrentX = useRef(0);
   const swipeActive = useRef(false);
 
+  // Resize drag tracking (refs only — no state so DOM update is synchronous)
+  const isResizing = useRef(false);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+
   // ── Content loading ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen || !item) return;
 
-    // Same item already shown with good content — don't re-fetch.
-    // Use link as the stable key since itemId may be null on first open.
     const itemKey = item.itemId ?? item.link;
     if (itemKey === lastItemIdRef.current && extractResult && !extractResult.fallback) return;
     lastItemIdRef.current = itemKey;
@@ -95,10 +107,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
     const isNewsletter = item.sourceType === "newsletter";
 
-    // ── Newsletter path ──────────────────────────────────────────────────────
-    // Newsletters have body_html stored at IMAP fetch time. Run it through
-    // /api/extract with item_id so Readability cleans it up, same as RSS.
-    // The server detects source_type='newsletter' and skips the HTTP fetch.
     if (isNewsletter && item.itemId) {
       setLoading(true);
       apiRequest("POST", "/api/extract", {
@@ -112,9 +120,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
       return;
     }
 
-    // ── RSS path (existing logic) ─────────────────────────────────────────────
-
-    // If body already extracted and we have a stable DB id, serve from cache
     if (item.hasBody && item.itemId) {
       setLoading(true);
       apiRequest("GET", `/api/feed-items/${item.itemId}`)
@@ -135,14 +140,11 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
       return;
     }
 
-    // No URL means we truly can't do anything
     if (!item.link) {
       setExtractResult({ fallback: true, error: "No article URL" });
       return;
     }
 
-    // Extract via Readability. item_id may be null if the upsert hasn't completed yet —
-    // the server handles this gracefully (extracts but skips the DB persist).
     setLoading(true);
     apiRequest("POST", "/api/extract", {
       url: item.link,
@@ -174,7 +176,7 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  // ── Mobile swipe-to-close (touch events on the pane) ─────────────────────────
+  // ── Mobile swipe-to-close ────────────────────────────────────────────────────
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
@@ -187,13 +189,9 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     const dx = e.touches[0].clientX - touchStartX.current;
     const dy = Math.abs(e.touches[0].clientY - touchStartY.current);
     touchCurrentX.current = e.touches[0].clientX;
-
-    // Only track rightward horizontal swipe, abort if vertical scroll detected
     if (dy < 40 && dx > 0) {
       swipeActive.current = true;
-      if (paneRef.current) {
-        paneRef.current.style.transform = `translateX(${dx}px)`;
-      }
+      if (paneRef.current) paneRef.current.style.transform = `translateX(${dx}px)`;
     }
   }, []);
 
@@ -226,17 +224,7 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     } catch { /* silent */ }
   }, [item]);
 
-  // ── iframe scale-to-fit + auto-height ───────────────────────────────────────
-  // Email HTML is designed for ~600px wide viewports. When the reading pane is
-  // narrower (tablet/mobile), we scale the iframe down proportionally using
-  // CSS transform — the same technique Gmail mobile uses. This preserves the
-  // email's intended layout without reflowing its table-based structure.
-  //
-  // Steps:
-  //   1. Let the iframe render at its natural content width
-  //   2. Compute scale = pane width / content width  (≤ 1 — never upscale)
-  //   3. Apply transform: scale(scale) with transform-origin: top left
-  //   4. Set the wrapper height to contentHeight * scale so no gap appears below
+  // ── iframe scale-to-fit ───────────────────────────────────────────────────────
   const resizeIframe = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -246,47 +234,95 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc || !doc.body) return;
 
-        // Reset transform so we read the true natural dimensions
         iframe.style.transform = "";
         iframe.style.width = "100%";
 
-        // Natural content width (the email's own layout width, often 600px)
         const naturalW = doc.documentElement.scrollWidth || doc.body.scrollWidth || 600;
-        // Container (pane) width
         const containerW = iframe.parentElement?.clientWidth || naturalW;
-
         const scale = containerW >= naturalW ? 1 : containerW / naturalW;
 
-        // Pin iframe to its natural width so the email doesn't reflow
         iframe.style.width = `${naturalW}px`;
-
-        // Natural content height at full width
         const naturalH = doc.documentElement.scrollHeight || doc.body.scrollHeight || 0;
-
-        // Apply proportional scale from the top-left corner
         iframe.style.transform = `scale(${scale})`;
         iframe.style.transformOrigin = "top left";
         iframe.style.height = `${naturalH}px`;
 
-        // Collapse the wrapper to the visually-scaled height so no blank gap below
         const wrapper = iframe.parentElement as HTMLElement | null;
         if (wrapper) wrapper.style.height = `${Math.ceil(naturalH * scale)}px`;
       } catch {
-        // Cross-origin guard — shouldn't happen with srcdoc but be safe
+        // Cross-origin guard
       }
     };
 
     fit();
-    // Re-run after images/fonts finish loading
     setTimeout(fit, 300);
     setTimeout(fit, 1200);
   }, []);
 
+  // ── ResizeObserver: retrigger iframe scale when pane width changes ────────────
+  useEffect(() => {
+    const wrapper = iframeWrapperRef.current;
+    if (!wrapper) return;
+    const ro = new ResizeObserver(() => resizeIframe());
+    ro.observe(wrapper);
+    return () => ro.disconnect();
+  }, [resizeIframe]);
+
+  // ── Pane resize drag ──────────────────────────────────────────────────────────
+  // Uses pointer events on the handle. Updating CSS var directly (no React state)
+  // makes the resize feel instantaneous. On pointerup, the final width is
+  // committed to prefs via savePrefs so it persists to the DB.
+  const onResizePointerDown = useCallback((e: React.PointerEvent) => {
+    // Only on desktop (pane isn't resizable on mobile)
+    if (window.innerWidth <= 767) return;
+    e.preventDefault();
+    isResizing.current = true;
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = paneRef.current
+      ? paneRef.current.getBoundingClientRect().width
+      : (prefs.paneWidth ?? 480);
+
+    document.body.classList.add("reading-pane-resizing");
+    paneRef.current?.classList.add("reading-pane--resizing");
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [prefs.paneWidth]);
+
+  const onResizePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isResizing.current) return;
+    // Dragging left (negative dx) = wider pane
+    const dx = resizeStartX.current - e.clientX;
+    const maxWidth = Math.floor(window.innerWidth * PANE_MAX_RATIO);
+    const newWidth = Math.max(PANE_MIN_WIDTH, Math.min(maxWidth, resizeStartWidth.current + dx));
+    // Write directly to DOM — zero React re-render
+    document.documentElement.style.setProperty("--reading-pane-width", `${newWidth}px`);
+  }, []);
+
+  const onResizePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!isResizing.current) return;
+    isResizing.current = false;
+    document.body.classList.remove("reading-pane-resizing");
+    paneRef.current?.classList.remove("reading-pane--resizing");
+
+    // Read the final committed value from the DOM
+    const finalWidth = parseInt(
+      document.documentElement.style.getPropertyValue("--reading-pane-width") || "480",
+      10
+    );
+    // Persist to DB (also commits to React state)
+    savePrefs({ ...prefs, paneWidth: finalWidth });
+  }, [prefs, savePrefs]);
+
+  // ── Apply saved paneWidth on mount / prefs change ─────────────────────────────
+  // applyPrefs() already sets --reading-pane-width but only runs on mount and
+  // explicit saves. This effect handles the initial hydration of the CSS var.
+  useEffect(() => {
+    const saved = prefs.paneWidth ?? 480;
+    document.documentElement.style.setProperty("--reading-pane-width", `${saved}px`);
+  }, [prefs.paneWidth]);
+
   if (!item) return null;
 
   const isNewsletter = item.sourceType === "newsletter";
-  // Newsletters render their own header images inline in the email HTML,
-  // so suppress the extracted hero to avoid showing it twice.
   const heroUrl = isNewsletter ? null : (extractResult?.hero_image_url ?? item.thumbnailUrl ?? null);
   const displayTitle = extractResult?.title || item.title;
   const displayByline = extractResult?.byline || item.author || null;
@@ -296,14 +332,12 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
     ? new Date(item.pubDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;
 
-  // For newsletters: "Open original" uses viewOnlineUrl if available; hide if absent
   const externalUrl = isNewsletter
     ? (item.viewOnlineUrl || null)
     : item.link;
 
   return (
     <>
-      {/* Scrim — dims the card grid on mobile when pane is open */}
       {isOpen && (
         <div
           className="reading-pane-scrim"
@@ -314,7 +348,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
       <div
         ref={paneRef}
-        // Desktop/tablet: complementary landmark; mobile: dialog
         role={isOpen ? "dialog" : "complementary"}
         aria-modal={isOpen ? "true" : undefined}
         aria-label="Article reader"
@@ -323,9 +356,17 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
+        {/* ── Resize handle (desktop only, hidden on mobile via CSS) ────── */}
+        <div
+          className="reading-pane__resize-handle"
+          aria-hidden="true"
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+        />
+
         {/* ── Fixed header ────────────────────────────────────────────────── */}
         <div className="reading-pane__header">
-          {/* Mobile: back chevron. Desktop: X close. CSS hides/shows each. */}
           <button
             ref={closeButtonRef}
             onClick={onClose}
@@ -343,7 +384,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
             <span>Feed</span>
           </button>
 
-          {/* Feed identity — centered */}
           <div className="reading-pane__feed-name">
             {isNewsletter ? (
               <Mail
@@ -364,8 +404,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
             <span>{item.feedTitle}</span>
           </div>
 
-          {/* Desktop: open original (hidden for newsletters without viewOnlineUrl).
-              Mobile: share button. */}
           {externalUrl ? (
             <a
               href={externalUrl}
@@ -377,7 +415,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               <ExternalLink size={15} />
             </a>
           ) : (
-            /* Placeholder to keep header layout balanced when no external link */
             <span className="reading-pane__external reading-pane__external--desktop" aria-hidden style={{ visibility: "hidden" }}>
               <ExternalLink size={15} />
             </span>
@@ -393,7 +430,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
 
         {/* ── Scrollable content ───────────────────────────────────────────── */}
         <div className="reading-pane__scroll">
-          {/* ── Hero image (scrolls with content) ──────────────────────────── */}
           {heroUrl && (
             <div className="reading-pane__hero">
               <img
@@ -409,11 +445,9 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
           )}
           <div className={cn("reading-pane__inner", isNewsletter && "reading-pane__inner--newsletter")}>
 
-            {/* Article header */}
             <h1 className="reading-pane__title">{displayTitle}</h1>
 
             <div className="reading-pane__meta">
-              {/* Newsletter: show "From: sender" line */}
               {isNewsletter && item.emailFrom && (
                 <span
                   className="flex items-center gap-1"
@@ -426,7 +460,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               {isNewsletter && item.emailFrom && formattedDate && (
                 <span aria-hidden>·</span>
               )}
-              {/* RSS: show byline */}
               {!isNewsletter && displayByline && <span>{displayByline}</span>}
               {!isNewsletter && displayByline && formattedDate && <span aria-hidden>·</span>}
               {formattedDate && <span>{formattedDate}</span>}
@@ -441,20 +474,16 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               )}
             </div>
 
-            {/* RSS description as preview while loading */}
             {loading && item.summary && (
               <p className="reading-pane__excerpt">{item.summary}</p>
             )}
 
-            {/* Loading skeleton */}
             {loading && <ReadingSkeleton />}
 
-            {/* Fallback */}
             {!loading && extractResult?.fallback && (
               <FallbackState url={externalUrl || item.link} error={extractResult.error} />
             )}
 
-            {/* Article body — RSS only (newsletters render outside __inner below) */}
             {!isNewsletter && !loading && extractResult && !extractResult.fallback && extractResult.content && (
               <div
                 className="reading-pane__body"
@@ -463,7 +492,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
               />
             )}
 
-            {/* Footer — only show "Read original" when there's an external URL (RSS only) */}
             {!isNewsletter && !loading && externalUrl && (
               <div className="reading-pane__footer">
                 <a href={externalUrl} target="_blank" rel="noopener noreferrer">
@@ -473,20 +501,14 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
             )}
           </div>
 
-          {/* Newsletter body — sandboxed iframe so the app's CSS never bleeds in.
-              srcdoc receives the full email HTML (already DOMPurify-sanitized server-side).
-              sandbox="allow-same-origin allow-popups":
-                - allow-same-origin: lets us read scrollWidth/scrollHeight for scaling
-                - allow-popups: lets links open in a new tab
-                - scripts intentionally blocked (no allow-scripts)
-              The wrapper div receives a dynamic height from resizeIframe so the
-              scaled-down content doesn't leave a blank gap below it. */}
+          {/* Newsletter iframe — wrapper div observed by ResizeObserver so
+              scale-to-fit recalculates whenever the pane is dragged wider/narrower */}
           {isNewsletter && !loading && extractResult && !extractResult.fallback && extractResult.content && (
             <div
+              ref={iframeWrapperRef}
               style={{
                 width: "100%",
                 overflow: "hidden",
-                // Height set dynamically by resizeIframe to match the scaled content
                 height: "0px",
               }}
             >
@@ -498,7 +520,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
                 style={{
                   border: "none",
                   display: "block",
-                  // width, height, transform all set dynamically by resizeIframe
                   transformOrigin: "top left",
                 }}
                 onLoad={resizeIframe}
@@ -506,7 +527,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
             </div>
           )}
 
-          {/* Newsletter footer */}
           {isNewsletter && !loading && externalUrl && (
             <div className="reading-pane__footer" style={{ padding: "var(--space-4) var(--space-6)" }}>
               <a href={externalUrl} target="_blank" rel="noopener noreferrer">
@@ -517,7 +537,6 @@ export default function ReadingPane({ item, isOpen, onClose }: ReadingPaneProps)
         </div>
       </div>
 
-      {/* "Link copied" toast */}
       <div
         className={cn("reading-pane__toast", toastVisible && "reading-pane__toast--visible")}
         role="status"
