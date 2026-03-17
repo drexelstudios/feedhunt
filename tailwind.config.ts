@@ -5,11 +5,49 @@ export default {
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
-      borderRadius: {
-        lg: ".5625rem", /* 9px */
-        md: ".375rem", /* 6px */
-        sm: ".1875rem", /* 3px */
+      // ── Font scale-aware text sizes ──────────────────────────────────────────
+      // Map Tailwind's text-* utilities to our --text-* CSS vars so that
+      // every shadcn component (Button, DropdownMenuItem, etc.) automatically
+      // scales when the user changes text size in settings.
+      // The --text-* vars already embed --font-scale via calc() in index.css.
+      fontSize: {
+        xs:   ["var(--text-xs)",   { lineHeight: "1.5" }],
+        sm:   ["var(--text-sm)",   { lineHeight: "1.5" }],
+        base: ["var(--text-base)", { lineHeight: "1.65" }],
+        lg:   ["var(--text-lg)",   { lineHeight: "1.4" }],
+        xl:   ["var(--text-xl)",   { lineHeight: "1.3" }],
+        // Keep 2xl+ static — those are display/hero sizes we never scale
+        "2xl": ["1.5rem",   { lineHeight: "2rem" }],
+        "3xl": ["1.875rem", { lineHeight: "2.25rem" }],
+        "4xl": ["2.25rem",  { lineHeight: "2.5rem" }],
       },
+
+      // ── Theme-aware border radius ─────────────────────────────────────────────
+      // These mirror what ThemeProvider writes to --radius-* so Tailwind
+      // classes like rounded-md and rounded-lg respect the active theme.
+      borderRadius: {
+        sm: "var(--radius-sm, 0.375rem)",
+        md: "var(--radius-md, 0.5rem)",
+        lg: "var(--radius-lg, 0.75rem)",
+        xl: "var(--radius-xl, 1rem)",
+        full: "9999px",
+      },
+
+      // ── Theme-aware heights for buttons / nav items ───────────────────────────
+      // shadcn Button uses min-h-9 (default) and min-h-8 (sm).
+      // These slots now point at our --btn-height vars so button height
+      // changes with the theme (Perplexity: taller, shadcn: compact).
+      minHeight: {
+        "8": "var(--btn-height-sm, 30px)",
+        "9": "var(--btn-height, 36px)",
+        "10": "var(--btn-height, 36px)",
+      },
+      height: {
+        "8": "var(--btn-height-sm, 30px)",
+        "9": "var(--btn-height, 36px)",
+        "10": "var(--btn-height, 36px)",
+      },
+
       colors: {
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",
@@ -73,7 +111,7 @@ export default {
         "sidebar-accent": {
           DEFAULT: "hsl(var(--sidebar-accent) / <alpha-value>)",
           foreground: "hsl(var(--sidebar-accent-foreground) / <alpha-value>)",
-          border: "var(--sidebar-accent-border)"
+          border: "var(--sidebar-accent-border)",
         },
         status: {
           online: "rgb(34 197 94)",
@@ -83,23 +121,23 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)"],
+        sans:  ["var(--font-sans)"],
         serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
+        mono:  ["var(--font-mono)"],
       },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
+          to:   { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
           from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
+          to:   { height: "0" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+        "accordion-up":   "accordion-up 0.2s ease-out",
       },
     },
   },

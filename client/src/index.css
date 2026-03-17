@@ -4,12 +4,12 @@
 
 /* ── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {
-  /* Type */
-  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
-  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
-  --text-base: clamp(1rem,     0.95rem + 0.25vw, 1.125rem);
-  --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);
-  --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);
+  /* Type — multiplied by --font-scale so the settings panel can resize all text */
+  --text-xs:   calc(clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem) * var(--font-scale));
+  --text-sm:   calc(clamp(0.875rem, 0.8rem  + 0.35vw, 1rem)     * var(--font-scale));
+  --text-base: calc(clamp(1rem,     0.95rem + 0.25vw, 1.125rem)  * var(--font-scale));
+  --text-lg:   calc(clamp(1.125rem, 1rem    + 0.75vw, 1.5rem)    * var(--font-scale));
+  --text-xl:   calc(clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem)   * var(--font-scale));
 
   /* Spacing */
   --space-1:  0.25rem;
@@ -36,6 +36,29 @@
 
   /* Transition */
   --transition-interactive: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Settings overrides — written by ThemeProvider at runtime */
+  --font-scale: 1;
+  --reading-pane-inner-max-width: 680px;
+
+  /* Theme geometry — overridden per theme by ThemeProvider */
+  --btn-height:              36px;
+  --btn-height-sm:           30px;
+  --btn-padding-x:           1rem;
+  --btn-padding-x-sm:        0.75rem;
+  --btn-font-weight:         600;
+  --btn-letter-spacing:      0em;
+  --btn-font-size:           0.875rem;
+  --item-padding-y:          0.625rem;
+  --item-padding-x:          1rem;
+  --nav-item-height:         34px;
+  --nav-item-padding-x:      0.75rem;
+  --nav-item-font-weight:    500;
+  --nav-item-letter-spacing: 0em;
+  --heading-letter-spacing:  -0.02em;
+  --heading-line-height:     1.25;
+  --body-line-height:        1.65;
+  --body-letter-spacing:     0em;
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
@@ -169,7 +192,8 @@ html {
 
 body {
   min-height: 100dvh;
-  line-height: 1.6;
+  line-height: var(--body-line-height, 1.65);
+  letter-spacing: var(--body-letter-spacing, 0em);
   font-family: var(--font-body);
   font-size: var(--text-base);
   background: hsl(var(--background));
@@ -241,7 +265,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--item-padding-y, 0.625rem) var(--item-padding-x, 1rem);
   border-bottom: 1px solid hsl(var(--border));
   cursor: grab;
   user-select: none;
@@ -261,7 +285,7 @@ body {
   font-family: var(--font-display);
   font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--heading-letter-spacing, -0.01em);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -293,7 +317,7 @@ body {
 }
 .feed-item a {
   display: block;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--item-padding-y, 0.625rem) var(--item-padding-x, 1rem);
   text-decoration: none;
   color: inherit;
 }
@@ -391,7 +415,7 @@ body {
   top: 57px;
   right: 0;
   bottom: 0;
-  width: 480px;
+  width: var(--reading-pane-width, 480px);
   background: hsl(var(--card));
   border-left: 1px solid hsl(var(--border));
   display: flex;
@@ -406,7 +430,8 @@ body {
   box-shadow: var(--shadow-lg);
 }
 @media (max-width: 1024px) and (min-width: 768px) {
-  .reading-pane { width: 420px; }
+  /* On tablet, cap to a max of 420px so it never overwhelms the layout */
+  .reading-pane { width: min(var(--reading-pane-width, 420px), 420px); }
 }
 @media (max-width: 767px) {
   .reading-pane { width: 100dvw; top: 0; border-left: none; }
@@ -504,7 +529,7 @@ body {
 
 /* ── Scrollable area ───────────────────────────────────────────────────────── */
 .reading-pane__scroll { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
-.reading-pane__inner { max-width: 680px; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8); }
+.reading-pane__inner { max-width: var(--reading-pane-inner-max-width, 680px); margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8); }
 /* Newsletters render their body OUTSIDE __inner, so remove the bottom padding
    that would otherwise create a visible gap between the meta section and the email HTML. */
 .reading-pane__inner--newsletter { padding-bottom: var(--space-3) !important; }
@@ -518,8 +543,8 @@ body {
   font-family: var(--font-display);
   font-size: clamp(1.25rem, 1.1rem + 0.75vw, 1.625rem);
   font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
+  line-height: var(--heading-line-height, 1.25);
+  letter-spacing: var(--heading-letter-spacing, -0.02em);
   color: hsl(var(--foreground));
   margin-bottom: var(--space-3);
 }
@@ -534,8 +559,10 @@ body {
 .reading-pane__body p { margin-bottom: 1.25em; }
 .reading-pane__body h1,.reading-pane__body h2,.reading-pane__body h3,
 .reading-pane__body h4,.reading-pane__body h5,.reading-pane__body h6 {
-  font-family: var(--font-display); font-weight: 700; line-height: 1.25;
-  letter-spacing: -0.01em; margin-top: 1.75em; margin-bottom: 0.5em; color: hsl(var(--foreground));
+  font-family: var(--font-display); font-weight: 700;
+  line-height: var(--heading-line-height, 1.25);
+  letter-spacing: var(--heading-letter-spacing, -0.01em);
+  margin-top: 1.75em; margin-bottom: 0.5em; color: hsl(var(--foreground));
 }
 .reading-pane__body img { max-width: 100%; height: auto; border-radius: var(--radius-md); margin: 1.25em 0; display: block; }
 .reading-pane__body a { color: hsl(var(--primary)); text-decoration: none; }
@@ -583,3 +610,94 @@ body {
 }
 .reading-pane__toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ── Reading pane resize handle ──────────────────────────────────────────────
+   A thin drag target on the left edge of the pane. Only visible on desktop
+   (hidden on mobile where the pane is full-width). The ::after pseudo-element
+   provides a visible affordance on hover without adding DOM nodes. */
+.reading-pane__resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  /* Widen the hit target without affecting visual width */
+  margin-left: -3px;
+}
+.reading-pane__resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  border-radius: 2px;
+  background: hsl(var(--border));
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.reading-pane__resize-handle:hover::after,
+.reading-pane--resizing .reading-pane__resize-handle::after {
+  opacity: 1;
+}
+/* During active resize: suppress text selection across the whole page */
+body.reading-pane-resizing {
+  user-select: none;
+  cursor: col-resize !important;
+}
+body.reading-pane-resizing * {
+  cursor: col-resize !important;
+}
+@media (max-width: 767px) {
+  .reading-pane__resize-handle { display: none; }
+}
+
+/* ── Header icon button scaling ──────────────────────────────────────────────
+   The three icon buttons (refresh, theme toggle, settings) use p-2 which is
+   static 8px. Wire them to scale with --btn-height-sm so they feel proportional. */
+header button.p-2,
+header button[class*="p-2"] {
+  padding: calc((var(--btn-height-sm, 34px) - 16px) / 2);
+}
+
+/* ── Theme-aware shadcn Button overrides ─────────────────────────────────────
+   shadcn's Button component uses Tailwind utility classes. We patch the vars
+   it references so height/padding/weight adapt per theme without touching
+   the component source. These target the actual DOM properties Tailwind sets. */
+.btn-theme,
+[class*="inline-flex"][class*="items-center"][class*="justify-center"] {
+  /* height and horizontal padding are applied by Tailwind so we override
+     via CSS vars that index.css uses for non-Tailwind buttons */
+}
+
+/* All <button> elements that use our design system vars */
+button {
+  font-family: var(--font-body);
+}
+
+/* Header nav buttons (shadcn Button component rendered as button) */
+header button,
+header a[role="button"] {
+  letter-spacing: var(--nav-item-letter-spacing, 0em);
+  font-weight: var(--nav-item-font-weight, 500);
+}
+
+/* Dropdown menu items */
+[role="menuitem"],
+[data-radix-collection-item] {
+  min-height: var(--nav-item-height, 34px);
+  padding-left: var(--nav-item-padding-x, 0.75rem);
+  padding-right: var(--nav-item-padding-x, 0.75rem);
+  font-family: var(--font-body);
+  font-weight: var(--nav-item-font-weight, 500);
+  letter-spacing: var(--nav-item-letter-spacing, 0em);
+}
+
+/* ── Heading font propagation ─────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: var(--heading-letter-spacing, -0.02em);
+  line-height: var(--heading-line-height, 1.25);
+}

@@ -822,6 +822,47 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+
+  // ── User preferences ─────────────────────────────────────────────────────────
+  // Stored as a single JSONB row in user_preferences keyed by user_id.
+  // GET returns the stored prefs or {} if none exist.
+  // POST upserts (merges) the provided fields.
+
+  app.get("/api/preferences", requireAuth, async (req, res) => {
+    try {
+      const { data } = await supabaseAdmin
+        .from("user_preferences")
+        .select("prefs")
+        .eq("user_id", req.userId!)
+        .maybeSingle();
+      res.json(data?.prefs ?? {});
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/preferences", requireAuth, async (req, res) => {
+    try {
+      const incoming = req.body as Record<string, unknown>;
+      // Merge with existing prefs so partial updates don't wipe other fields
+      const { data: existing } = await supabaseAdmin
+        .from("user_preferences")
+        .select("prefs")
+        .eq("user_id", req.userId!)
+        .maybeSingle();
+      const merged = { ...(existing?.prefs ?? {}), ...incoming };
+      await supabaseAdmin
+        .from("user_preferences")
+        .upsert(
+          { user_id: req.userId!, prefs: merged },
+          { onConflict: "user_id" }
+        );
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Categories ─────────────────────────────────────────────────────────────
   app.get("/api/categories", requireAuth, async (_req, res) => {
     const cats = await storage.getCategories(_req.userId!);
