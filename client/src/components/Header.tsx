@@ -75,7 +75,7 @@ export default function Header({ onAddFeed, onCreateFeed }: HeaderProps) {
               style={{
                 fontFamily: "var(--font-display)",
                 fontWeight: 800,
-                fontSize: "1.1rem",
+                fontSize: "calc(1.1rem * var(--font-scale, 1))",
                 letterSpacing: "-0.03em",
                 color: "hsl(var(--foreground))",
               }}
@@ -145,7 +145,7 @@ export default function Header({ onAddFeed, onCreateFeed }: HeaderProps) {
               <DropdownMenuTrigger asChild>
                 <button
                   data-testid="button-user-menu"
-                  className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold transition-all hover:opacity-80"
+                  className="flex items-center justify-center rounded-full text-xs font-bold transition-all hover:opacity-80" style={{ width: "var(--btn-height-sm, 30px)", height: "var(--btn-height-sm, 30px)" }}
                   style={{
                     background: "hsl(var(--primary))",
                     color: "hsl(var(--primary-foreground))",
