@@ -26,6 +26,8 @@ export interface UserPrefs {
   themeId: ThemeId;
   fontScale: number;
   readingWidth: ReadingWidth;
+  /** Reading pane width in pixels — set by drag resize, persisted to DB */
+  paneWidth: number;
 }
 
 const DEFAULT_PREFS: UserPrefs = {
@@ -33,6 +35,7 @@ const DEFAULT_PREFS: UserPrefs = {
   themeId: "default",
   fontScale: 1,
   readingWidth: "default",
+  paneWidth: 480,
 };
 
 // ── Font injection ─────────────────────────────────────────────────────────────
@@ -358,6 +361,7 @@ export function applyPrefs(prefs: UserPrefs) {
 
   root.style.setProperty("--font-scale", String(prefs.fontScale));
   root.style.setProperty("--reading-pane-inner-max-width", READING_WIDTHS[prefs.readingWidth]);
+  root.style.setProperty("--reading-pane-width", `${prefs.paneWidth ?? 480}px`);
   root.setAttribute("data-theme", prefs.colorMode);
   root.classList.toggle("dark", prefs.colorMode === "dark");
 }
