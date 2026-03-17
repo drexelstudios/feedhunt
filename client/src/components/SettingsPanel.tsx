@@ -436,5 +436,3 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     </>
   );
 }
-
-SHA: 19500b04c174103a3bb45a5ccda23efd0870d3b7
