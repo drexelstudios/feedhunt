@@ -17,7 +17,7 @@ import { apiRequest } from "@/lib/queryClient";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ColorMode = "dark" | "light";
+export type ColorMode = "dark" | "light" | "system";
 export type ThemeId = "default" | "perplexity" | "shadcn" | "apple" | "material3";
 export type ReadingWidth = "compact" | "default" | "wide";
 
@@ -33,7 +33,7 @@ export interface UserPrefs {
 }
 
 const DEFAULT_PREFS: UserPrefs = {
-  colorMode: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+  colorMode: "system",
   themeId: "default",
   fontScale: 1,
   readingWidth: "default",
@@ -536,7 +536,7 @@ export function applyPrefs(prefs: UserPrefs) {
   // Merge: base (fonts/geometry/density) + color palette for current mode
   const vars = {
     ...theme.base,
-    ...(prefs.colorMode === "dark" ? theme.dark : theme.light),
+    ...((prefs.colorMode === "dark" || (prefs.colorMode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)) ? theme.dark : theme.light),
   };
 
   for (const [k, v] of Object.entries(vars)) {
@@ -547,8 +547,9 @@ export function applyPrefs(prefs: UserPrefs) {
   root.style.setProperty("--reading-pane-inner-max-width", READING_WIDTHS[prefs.readingWidth]);
   root.style.setProperty("--reading-pane-width", `${prefs.paneWidth ?? 480}px`);
   root.style.setProperty("--content-wide", prefs.containerWidth === "wide" ? "1920px" : "1400px");
-  root.setAttribute("data-theme", prefs.colorMode);
-  root.classList.toggle("dark", prefs.colorMode === "dark");
+  const resolvedDark = prefs.colorMode === "dark" || (prefs.colorMode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  root.setAttribute("data-theme", resolvedDark ? "dark" : "light");
+  root.classList.toggle("dark", resolvedDark);
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -599,7 +600,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggle = useCallback(() => {
-    savePrefs({ ...prefs, colorMode: prefs.colorMode === "dark" ? "light" : "dark" });
+    savePrefs({ ...prefs, colorMode: prefs.colorMode === "dark" ? "light" : "dark" }); // toggle ignores system
   }, [prefs, savePrefs]);
 
   return (
