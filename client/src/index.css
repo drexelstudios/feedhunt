@@ -219,25 +219,37 @@ body {
 
 /* ── Feed grid ──────────────────────────────────────────────────────────────── */
 .feed-masonry {
-  columns: 3;
-  column-gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  align-items: start;
 }
-.feed-masonry-2 { columns: 2; column-gap: 1rem; }
-.feed-masonry-4 { columns: 4; column-gap: 1rem; }
+.feed-masonry-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.feed-masonry-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
 
 @media (max-width: 900px) {
-  .feed-masonry, .feed-masonry-4 { columns: 2; }
+  .feed-masonry, .feed-masonry-4 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
-  .feed-masonry, .feed-masonry-2, .feed-masonry-4 { columns: 1; }
+  .feed-masonry, .feed-masonry-2, .feed-masonry-4 { grid-template-columns: 1fr; }
 }
 
 .feed-masonry .feed-widget,
 .feed-masonry-2 .feed-widget,
 .feed-masonry-4 .feed-widget {
-  break-inside: avoid;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
   display: block;
+  min-width: 0;
 }
 
 /* ── Feed widget ─────────────────────────────────────────────────────────────── */
