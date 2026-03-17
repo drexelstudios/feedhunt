@@ -237,7 +237,8 @@ body {
 .feed-masonry-4 .feed-widget {
   break-inside: avoid;
   margin-bottom: 1rem;
-  display: block;
+  display: inline-block;
+  width: 100%;
 }
 
 /* ── Feed widget ─────────────────────────────────────────────────────────────── */
