@@ -17,6 +17,7 @@ import {
   type UserPrefs,
   type ThemeId,
   type ReadingWidth,
+  type ColorMode,
 } from "@/components/ThemeProvider";
 
 interface SettingsPanelProps {
@@ -47,10 +48,11 @@ function ThemeCard({
 }: {
   theme: typeof THEMES[number];
   selected: boolean;
-  colorMode: "dark" | "light";
+  colorMode: ColorMode;
   onSelect: () => void;
 }) {
-  const vars = colorMode === "dark" ? theme.dark : theme.light;
+  const resolvedDark = colorMode === "dark" || (colorMode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const vars = resolvedDark ? theme.dark : theme.light;
   const bg      = `hsl(${vars["--background"]})`;
   const card    = `hsl(${vars["--card"]})`;
   const primary = `hsl(${vars["--primary"]})`;
@@ -267,7 +269,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           <section style={{ marginBottom: "var(--space-6)" }}>
             <SectionLabel>Mode</SectionLabel>
             <div style={{ display: "flex", gap: "var(--space-2)" }}>
-              {(["light", "dark"] as const).map((mode) => (
+              {(["light", "system", "dark"] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => updateDraft({ colorMode: mode })}
@@ -284,7 +286,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     textTransform: "capitalize" as const,
                   }}
                 >
-                  {mode === "light" ? "☀️ Light" : "🌙 Dark"}
+                  {mode === "light" ? "☀️ Light" : mode === "system" ? "💻 System" : "🌙 Dark"}
                 </button>
               ))}
             </div>
