@@ -730,10 +730,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // Strip inline style attributes containing CSS custom properties (var(...))
       // before JSDOM parses them — JSDOM throws when Readability tries to access
       // style properties whose values are CSS custom property expressions.
-      const sanitizedHtml = html.replace(
-        /\bstyle="([^"]*)"/gi,
-        (match, val) => val.includes("var(") ? "" : match
-      );
+      // Handles both double-quoted and single-quoted style attributes.
+      const sanitizedHtml = html
+        .replace(/\bstyle="([^"]*)"/gi, (match, val) => val.includes("var(") ? "" : match)
+        .replace(/\bstyle='([^']*)'/gi, (match, val) => val.includes("var(") ? "" : match);
       const dom = new JSDOM(sanitizedHtml, { url, virtualConsole });
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
