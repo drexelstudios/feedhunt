@@ -721,9 +721,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // Bundled inline by esbuild (external:[]). Dynamic import keeps them
       // out of the module-init critical path so a cold start doesn't parse
       // jsdom before any request arrives.
-      const { JSDOM } = await import("jsdom");
+      const { JSDOM, VirtualConsole } = await import("jsdom");
       const { Readability } = await import("@mozilla/readability");
-      const dom = new JSDOM(html, { url });
+      const virtualConsole = new VirtualConsole();
+      virtualConsole.sendTo(console, { omitJSDOMErrors: true });
+      const dom = new JSDOM(html, { url, virtualConsole });
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
 
