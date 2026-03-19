@@ -724,7 +724,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const { JSDOM, VirtualConsole } = await import("jsdom");
       const { Readability } = await import("@mozilla/readability");
       const virtualConsole = new VirtualConsole();
-      virtualConsole.sendTo(console, { omitJSDOMErrors: true });
+      // Forward only non-CSS errors — suppresses var()/custom-property parse crashes
+      virtualConsole.on("jsdomError", () => { /* suppress */ });
       const dom = new JSDOM(html, { url, virtualConsole });
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
