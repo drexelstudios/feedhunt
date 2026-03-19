@@ -1250,7 +1250,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // Re-scan an existing scraped feed by slug (used by Edit Feed dialog)
-  // Uses quickExtract (no Claude) so it completes well within Vercel's 10s limit.
+  // Uses full Claude scrapeFeed so it reliably finds new articles regardless of URL structure.
   app.post("/api/scrape/rescan", requireAuth, async (req, res) => {
     const { slug, feedId } = req.body;
     if (!slug) return res.status(400).json({ error: "slug required" });
@@ -1263,52 +1263,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (error || !feed) return res.status(404).json({ error: "Feed not found" });
 
     try {
-      // Fetch page — cap at 200KB, 8s timeout
-      const pageResp = await fetch(feed.source_url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; Feedhunt/1.0)" },
-        signal: AbortSignal.timeout(8000),
-        redirect: "follow",
-      });
-      if (!pageResp.ok) throw new Error(`HTTP ${pageResp.status}`);
-
-      const reader = pageResp.body?.getReader();
-      const chunks: Uint8Array[] = [];
-      let totalBytes = 0;
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done || !value) break;
-          chunks.push(value);
-          totalBytes += value.byteLength;
-          if (totalBytes >= 200 * 1024) { reader.cancel(); break; }
-        }
-      }
-      const html = new TextDecoder().decode(
-        chunks.reduce((acc, c) => { const t = new Uint8Array(acc.byteLength + c.byteLength); t.set(acc); t.set(c, acc.byteLength); return t; }, new Uint8Array(0))
-      );
-
-      const items = quickExtract(html, feed.source_url);
-      if (items.length) {
-        const posts = items.map((item) => ({
-          feed_id: feed.id,
-          title: item.title,
-          link: item.link,
-          description: item.description || "",
-          pub_date: item.pubDate ? new Date(item.pubDate).toISOString() : null,
-          guid: item.link,
-        }));
-        await supabaseAdmin
-          .from("scraped_posts")
-          .upsert(posts, { onConflict: "feed_id,guid", ignoreDuplicates: true });
-        await supabaseAdmin
-          .from("scraped_feeds")
-          .update({ last_scraped_at: new Date().toISOString(), last_error: null })
-          .eq("id", feed.id);
-      }
+      const result = await scrapeFeed(feed.source_url, feed.id, req.userId!);
       // Bust the in-memory RSS cache so the next /api/feeds/:id/items call
-      // fetches fresh data instead of returning the cached empty result
+      // fetches fresh data instead of returning the cached result
       if (feedId) feedCache.delete(Number(feedId));
-      res.json({ success: true, itemsCount: items.length });
+      if (!result.success) throw new Error(result.error || "Scrape failed");
+      res.json({ success: true, itemsCount: result.itemsCount });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
