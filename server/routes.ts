@@ -510,10 +510,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (!url) {
       return res.status(400).json({ error: "url required", fallback: true });
     }
-    // Validate URL is a real http/https address before fetching
-    const urlCheck = httpUrlSchema.safeParse(url);
-    if (!urlCheck.success) {
-      return res.status(400).json({ error: "Invalid URL", fallback: true });
+    // Validate URL is a real http/https address before fetching.
+    // newsletter:<id> URLs are internal identifiers — skip validation for those,
+    // they never reach fetch() (handled by the newsletter DB path below).
+    const isNewsletterUrl = typeof url === "string" && url.startsWith("newsletter:");
+    if (!isNewsletterUrl) {
+      const urlCheck = httpUrlSchema.safeParse(url);
+      if (!urlCheck.success) {
+        return res.status(400).json({ error: "Invalid URL", fallback: true });
+      }
     }
     // Rate limit: 10 extractions per minute per user
     const rl = checkRateLimit(req.userId!, "extract", 10, 60_000);
