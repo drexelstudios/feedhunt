@@ -726,9 +726,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const { JSDOM, VirtualConsole } = await import("jsdom");
       const { Readability } = await import("@mozilla/readability");
       const virtualConsole = new VirtualConsole();
-      // Forward only non-CSS errors — suppresses var()/custom-property parse crashes
       virtualConsole.on("jsdomError", () => { /* suppress */ });
-      const dom = new JSDOM(html, { url, virtualConsole });
+      // Strip inline style attributes containing CSS custom properties (var(...))
+      // before JSDOM parses them — JSDOM throws when Readability tries to access
+      // style properties whose values are CSS custom property expressions.
+      const sanitizedHtml = html.replace(
+        /\bstyle="([^"]*)"/gi,
+        (match, val) => val.includes("var(") ? "" : match
+      );
+      const dom = new JSDOM(sanitizedHtml, { url, virtualConsole });
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
 
