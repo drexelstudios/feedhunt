@@ -563,6 +563,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         // ── Pass 1: strip borders, bgcolor, and spacer dimensions ───────────
         const allEls = doc.querySelectorAll("table, tr, td, th, div, span, p, h1, h2, h3, h4, h5, h6, a");
         allEls.forEach((el: Element) => {
+          try {
           // Remove HTML border/bgcolor/background attributes
           el.removeAttribute("border");
           el.removeAttribute("bgcolor");
@@ -639,6 +640,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
               }
             }
           }
+          } catch { /* ignore elements with unparseable inline styles */ }
         });
 
         // ── Pass 2: remove spacer rows and cells ────────────────────────────────
