@@ -727,13 +727,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const { Readability } = await import("@mozilla/readability");
       const virtualConsole = new VirtualConsole();
       virtualConsole.on("jsdomError", () => { /* suppress */ });
-      // Strip inline style attributes containing CSS custom properties (var(...))
-      // before JSDOM parses them — JSDOM throws when Readability tries to access
-      // style properties whose values are CSS custom property expressions.
-      // Handles both double-quoted and single-quoted style attributes.
-      const sanitizedHtml = html
-        .replace(/\bstyle="([^"]*)"/gi, (match, val) => val.includes("var(") ? "" : match)
-        .replace(/\bstyle='([^']*)'/gi, (match, val) => val.includes("var(") ? "" : match);
+      // Strip <style> blocks before passing to JSDOM — JSDOM's CSS shorthand
+      // parser throws on CSS custom properties (e.g. border: var(--x, 1px)).
+      // Readability only needs the DOM structure, not the stylesheets.
+      const sanitizedHtml = html.replace(/<style[\s\S]*?<\/style>/gi, "");
       const dom = new JSDOM(sanitizedHtml, { url, virtualConsole });
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
