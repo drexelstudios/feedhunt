@@ -91,8 +91,21 @@ export default function FeedWidget({ feed, isDragging, selectedItemId, onItemCli
     staleTime: 5 * 60 * 1000,
   });
 
+  // Scraped (Feed Creator) feeds have a URL pointing to our own /api/feed/<slug> endpoint.
+  // For those, refresh triggers a full re-scrape (Claude) so new articles are discovered.
+  // For regular RSS feeds, refresh just busts the cache and re-fetches the RSS.
+  const scrapedSlug = (() => {
+    try {
+      const m = new URL(feed.url).pathname.match(/\/api\/feed\/([^/]+)/);
+      return m ? m[1] : null;
+    } catch { return null; }
+  })();
+
   const refreshMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/feeds/${feed.id}/refresh`),
+    mutationFn: () =>
+      scrapedSlug
+        ? apiRequest("POST", "/api/scrape/rescan", { slug: scrapedSlug, feedId: feed.id })
+        : apiRequest("POST", `/api/feeds/${feed.id}/refresh`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/feeds/${feed.id}/items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/feeds/${feed.id}/item-meta`] });
