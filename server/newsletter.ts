@@ -15,7 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 20;
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL!,
