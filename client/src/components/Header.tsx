@@ -126,7 +126,7 @@ export default function Header({ onAddFeed, onCreateFeed }: HeaderProps) {
               className="gap-1.5 text-xs font-semibold"
             >
               <Plus size={14} />
-              Add Feed
+              <span className="hidden sm:inline">Add Feed</span>
             </Button>
 
             {/* User menu */}

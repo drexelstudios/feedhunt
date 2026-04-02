@@ -304,6 +304,10 @@ body {
 .feed-widget:focus-within .widget-actions {
   opacity: 1;
 }
+/* Touch devices and mobile: always show widget actions */
+@media (hover: none), (max-width: 768px) {
+  .widget-actions { opacity: 1; }
+}
 
 /* ── Feed items list ─────────────────────────────────────────────────────────── */
 .feed-items {
