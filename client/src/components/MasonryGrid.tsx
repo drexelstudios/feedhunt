@@ -1,9 +1,9 @@
-import { useRef, useEffect, useState, useCallback, type ReactNode } from "react";
+import { useRef, useEffect, useState, useCallback, type ReactElement } from "react";
 
 interface MasonryGridProps {
   columns: number;
   gap?: number;
-  children: ReactNode[];
+  children: ReactElement[];
   className?: string;
 }
 
@@ -12,7 +12,8 @@ interface MasonryGridProps {
  * giving an even spread across all columns with tight vertical packing.
  *
  * Uses absolute positioning measured from real DOM heights, with a
- * ResizeObserver to re-layout when children change size.
+ * ResizeObserver to re-layout when children change size (including
+ * async content loads like feed items).
  */
 export default function MasonryGrid({
   columns,
@@ -21,10 +22,8 @@ export default function MasonryGrid({
   className,
 }: MasonryGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [positions, setPositions] = useState<
-    { left: number; top: number; width: number }[]
-  >([]);
   const [containerHeight, setContainerHeight] = useState(0);
+  const layoutRef = useRef<() => void>();
 
   const layout = useCallback(() => {
     const container = containerRef.current;
@@ -34,60 +33,71 @@ export default function MasonryGrid({
       container.querySelectorAll<HTMLElement>(":scope > [data-masonry-item]")
     );
     if (items.length === 0) {
-      setPositions([]);
       setContainerHeight(0);
       return;
     }
 
     const containerWidth = container.clientWidth;
+    if (containerWidth === 0) return; // not mounted yet
     const colWidth = (containerWidth - gap * (columns - 1)) / columns;
     const colHeights = new Array(columns).fill(0);
-    const newPositions: { left: number; top: number; width: number }[] = [];
 
     for (const item of items) {
+      // Set width first so height measurement is accurate
+      item.style.width = `${colWidth}px`;
+
       // Find shortest column
       const shortestCol = colHeights.indexOf(Math.min(...colHeights));
       const left = shortestCol * (colWidth + gap);
       const top = colHeights[shortestCol];
 
-      newPositions.push({ left, top, width: colWidth });
-
-      // Measure real height — temporarily make visible and positioned for measurement
-      item.style.position = "absolute";
-      item.style.width = `${colWidth}px`;
       item.style.left = `${left}px`;
       item.style.top = `${top}px`;
-      item.style.visibility = "visible";
 
       const height = item.offsetHeight;
       colHeights[shortestCol] += height + gap;
     }
 
-    setPositions(newPositions);
     setContainerHeight(Math.max(...colHeights) - gap);
   }, [columns, gap]);
+
+  layoutRef.current = layout;
 
   // Re-layout on children or column count change
   useEffect(() => {
     layout();
   }, [layout, children]);
 
-  // ResizeObserver for container width changes and child size changes
+  // ResizeObserver — watches container AND all masonry items for size changes.
+  // Uses a MutationObserver to pick up new/removed items dynamically.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const ro = new ResizeObserver(() => layout());
+    const ro = new ResizeObserver(() => layoutRef.current?.());
+
+    // Observe container for width changes
     ro.observe(container);
 
-    // Also observe each child for size changes (e.g. collapse/expand)
-    const items = container.querySelectorAll<HTMLElement>(
-      ":scope > [data-masonry-item]"
-    );
-    items.forEach((item) => ro.observe(item));
+    // Observe all current items
+    const observeItems = () => {
+      const items = container.querySelectorAll<HTMLElement>(":scope > [data-masonry-item]");
+      items.forEach((item) => ro.observe(item));
+    };
+    observeItems();
 
-    return () => ro.disconnect();
-  }, [layout, children]);
+    // Watch for DOM mutations (new items added/removed) to re-observe
+    const mo = new MutationObserver(() => {
+      observeItems();
+      layoutRef.current?.();
+    });
+    mo.observe(container, { childList: true, subtree: true });
+
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [children]);
 
   return (
     <div
@@ -95,23 +105,18 @@ export default function MasonryGrid({
       className={className}
       style={{ position: "relative", height: containerHeight || "auto" }}
     >
-      {Array.isArray(children)
-        ? children.map((child, i) => (
-            <div
-              key={i}
-              data-masonry-item
-              style={{
-                position: "absolute",
-                left: positions[i]?.left ?? 0,
-                top: positions[i]?.top ?? 0,
-                width: positions[i]?.width ?? "100%",
-                transition: "left 200ms ease, top 200ms ease",
-              }}
-            >
-              {child}
-            </div>
-          ))
-        : children}
+      {children.map((child) => (
+        <div
+          key={child.key}
+          data-masonry-item
+          style={{
+            position: "absolute",
+            transition: "left 200ms ease, top 200ms ease",
+          }}
+        >
+          {child}
+        </div>
+      ))}
     </div>
   );
 }
