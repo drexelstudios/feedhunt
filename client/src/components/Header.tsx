@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, RefreshCw, LogOut, Sparkles, Settings, Search } from "lucide-react";
+import { Plus, RefreshCw, LogOut, Sparkles, Settings, Search, Rss } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import type { Feed } from "@shared/schema";
@@ -109,37 +109,45 @@ export default function Header({ onAddFeed, onCreateFeed, onSearchFeed }: Header
               <Settings size={16} />
             </button>
 
-            <Button
-              data-testid="button-create-feed"
-              onClick={onCreateFeed}
-              size="sm"
-              variant="outline"
-              className="gap-1.5 text-xs font-semibold flex"
-            >
-              <Sparkles size={13} />
-              <span className="hidden sm:inline">Create Feed</span>
-            </Button>
-
-            <Button
-              data-testid="button-search-feed"
-              onClick={onSearchFeed}
-              size="sm"
-              variant="outline"
-              className="gap-1.5 text-xs font-semibold flex"
-            >
-              <Search size={13} />
-              <span className="hidden sm:inline">Search Feed</span>
-            </Button>
-
-            <Button
-              data-testid="button-add-feed"
-              onClick={onAddFeed}
-              size="sm"
-              className="gap-1.5 text-xs font-semibold"
-            >
-              <Plus size={14} />
-              <span className="hidden sm:inline">Add Feed</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  data-testid="button-add-feed"
+                  size="sm"
+                  className="gap-1.5 text-xs font-semibold"
+                >
+                  <Plus size={14} />
+                  <span className="hidden sm:inline">Add Feed</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  data-testid="menu-add-rss"
+                  className="gap-2 cursor-pointer text-xs"
+                  onClick={onAddFeed}
+                >
+                  <Rss size={14} />
+                  Add RSS Feed
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-search-feed"
+                  className="gap-2 cursor-pointer text-xs"
+                  onClick={onSearchFeed}
+                >
+                  <Search size={14} />
+                  Search by Keyword
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="menu-create-feed"
+                  className="gap-2 cursor-pointer text-xs"
+                  onClick={onCreateFeed}
+                >
+                  <Sparkles size={14} />
+                  Create with AI
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* User menu */}
             <DropdownMenu>
