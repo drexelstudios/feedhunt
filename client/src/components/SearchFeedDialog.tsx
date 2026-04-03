@@ -106,14 +106,14 @@ export default function SearchFeedDialog({ open, onOpenChange, categories }: Sea
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-search-feed">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden" data-testid="dialog-search-feed">
         <DialogHeader>
           <DialogTitle
             style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
           >
             Search Feed
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm">
             Enter a keyword or topic to create a feed from news search results.
           </DialogDescription>
         </DialogHeader>
@@ -166,23 +166,22 @@ export default function SearchFeedDialog({ open, onOpenChange, categories }: Sea
           {/* Preview results */}
           {preview && (
             <div
-              className="rounded-lg p-3 overflow-hidden"
+              className="rounded-lg p-3 min-w-0"
               style={{
                 background: "hsl(var(--accent))",
                 border: "1px solid hsl(var(--border))",
+                overflow: "hidden",
               }}
               data-testid="search-preview"
             >
               <div className="flex items-start gap-2 mb-2 min-w-0">
                 <Newspaper size={14} style={{ color: "hsl(var(--primary))", marginTop: 2, flexShrink: 0 }} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold leading-tight">
-                    {preview.items.length} results for "{keyword}"
-                  </p>
-                </div>
+                <p className="text-sm font-semibold leading-tight min-w-0 truncate">
+                  {preview.items.length} results for "{keyword}"
+                </p>
               </div>
               {preview.items.length > 0 && (
-                <ul className="text-xs space-y-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+                <ul className="text-xs space-y-1 min-w-0" style={{ color: "hsl(var(--muted-foreground))" }}>
                   {preview.items.slice(0, 3).map((item, i) => (
                     <li key={i} className="truncate">· {item.title}</li>
                   ))}
