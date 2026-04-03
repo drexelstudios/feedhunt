@@ -23,8 +23,8 @@ export const DEMO_CATEGORIES = [
 export const DEMO_FEEDS: DemoFeed[] = [
   // ── World News ───────────────────────────────────────────────────────────
   { id: -1,  title: "BBC News",         url: "https://feeds.bbci.co.uk/news/rss.xml",                       category: "World News",    maxItems: 10 },
-  { id: -2,  title: "Reuters",          url: "https://feeds.reuters.com/reuters/topNews",                   category: "World News",    maxItems: 10 },
-  { id: -3,  title: "AP News",          url: "https://rsshub.app/apnews/topics/apf-topnews",               category: "World News",    maxItems: 10 },
+  { id: -2,  title: "Reuters",          url: "https://news.google.com/rss/search?q=site:reuters.com&hl=en-US&gl=US&ceid=US:en", category: "World News", maxItems: 10 },
+  { id: -3,  title: "AP News",          url: "https://news.google.com/rss/search?q=source:Associated+Press&hl=en-US&gl=US&ceid=US:en", category: "World News", maxItems: 10 },
   { id: -4,  title: "Al Jazeera",       url: "https://www.aljazeera.com/xml/rss/all.xml",                  category: "World News",    maxItems: 10 },
 
   // ── Technology ───────────────────────────────────────────────────────────
