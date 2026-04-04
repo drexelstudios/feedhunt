@@ -63,7 +63,7 @@ async function fetchAndParse(url: string) {
 async function fetchFeedItems(url: string): Promise<any[]> {
   try {
     const feed = await fetchAndParse(url);
-    return (feed.items || []).map((item: any) => {
+    const items = (feed.items || []).map((item: any) => {
       // Thumbnail priority order (Phase 2):
       // 1. <media:content url> or <media:thumbnail url>
       // 2. <enclosure url type="image/...">
@@ -88,6 +88,13 @@ async function fetchFeedItems(url: string): Promise<any[]> {
         guid: item.guid || item.link || "",
       };
     });
+    // Sort newest first
+    items.sort((a, b) => {
+      const da = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+      const db = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+      return db - da;
+    });
+    return items;
   } catch (e) {
     console.error("RSS fetch error for", url, e);
     return [];
