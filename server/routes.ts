@@ -86,6 +86,8 @@ async function fetchFeedItems(url: string): Promise<any[]> {
         author: item.creator || item.author || "",
         thumbnail,
         guid: item.guid || item.link || "",
+        // Preserve full HTML from content:encoded for reading pane fallback
+        contentHtml: item["content:encoded"] || item.content || "",
       };
     });
     // Sort newest first
@@ -182,6 +184,21 @@ async function upsertFeedItems(
       onConflict: "feed_id,guid",
       ignoreDuplicates: false,
     });
+
+  // Store RSS content:encoded as body_html for items that don't have it yet.
+  // This provides a fallback for sites behind Cloudflare bot protection.
+  for (const item of items) {
+    const html = item.contentHtml;
+    if (!html || html.length < 100) continue; // skip empty/trivial content
+    const guid = item.guid || item.link || item.title;
+    await supabaseAdmin
+      .from("feed_items")
+      .update({ body_html: html, body_extracted_at: new Date().toISOString() })
+      .eq("feed_id", feedId)
+      .eq("user_id", userId)
+      .eq("guid", guid)
+      .is("body_html", null);
+  }
 }
 
 export function registerRoutes(httpServer: Server, app: Express) {
@@ -563,6 +580,24 @@ export function registerRoutes(httpServer: Server, app: Express) {
           });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           html = await resp.text();
+          // Detect Cloudflare challenge pages
+          if (html.includes("Just a moment...") && html.includes("cf_chl_opt")) {
+            throw new Error("Cloudflare challenge detected");
+          }
+        } catch (fetchErr) {
+          // Fall back to RSS content:encoded stored in body_html
+          if (item_id) {
+            const { data: fallbackRow } = await supabaseAdmin
+              .from("feed_items")
+              .select("body_html")
+              .eq("id", item_id)
+              .eq("user_id", req.userId)
+              .maybeSingle();
+            if (fallbackRow?.body_html) {
+              html = fallbackRow.body_html;
+            }
+          }
+          if (!html) throw fetchErr;
         } finally {
           clearTimeout(timeout);
         }
