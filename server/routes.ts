@@ -820,6 +820,34 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return res.json({ error: "Readability could not parse article", fallback: true });
       }
 
+      // Detect garbage extraction (footer text, "Page Not Found", paywall stubs)
+      const textLen = (article.textContent || "").trim().length;
+      if (textLen < 200 || /page not found|404|subscribe to continue/i.test(article.title || "")) {
+        // Try RSS body_html fallback before giving up
+        if (item_id) {
+          const { data: rssRow } = await supabaseAdmin
+            .from("feed_items")
+            .select("body_html, summary")
+            .eq("id", item_id)
+            .eq("user_id", req.userId)
+            .maybeSingle();
+          if (rssRow?.body_html) {
+            return res.json({
+              title: "", byline: "",
+              content: DOMPurify.sanitize(rssRow.body_html, {
+                ALLOWED_TAGS: ["p","br","b","strong","i","em","u","s","del","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote","pre","code","a","img","figure","figcaption","table","thead","tbody","tr","th","td","div","span","hr"],
+                ALLOWED_ATTR: ["href","src","alt","title","class","target","rel","width","height"],
+                ALLOW_DATA_ATTR: false, FORCE_BODY: true,
+              }),
+              excerpt: "", hero_image_url: null,
+              reading_time_minutes: Math.ceil((rssRow.body_html.split(/\s+/).length) / 200),
+              fallback: false,
+            });
+          }
+        }
+        return res.json({ error: "This article couldn't be loaded in reader mode", fallback: true });
+      }
+
       // 3. Find hero image: check if extracted content starts with an <img>
       //    or has a prominent image in the first 20% of the body.
       //    If found, extract src and REMOVE it from the body (no double-render).
