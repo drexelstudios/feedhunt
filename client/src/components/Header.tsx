@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, RefreshCw, LogOut, Sparkles, Settings, Search, Rss } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Feed } from "@shared/schema";
 import SettingsPanel from "@/components/SettingsPanel";
 
@@ -29,11 +29,16 @@ export default function Header({ onAddFeed, onCreateFeed, onSearchFeed }: Header
 
   const handleRefreshAll = async () => {
     setRefreshing(true);
-    await Promise.all(
-      feeds.map((f) =>
+    await Promise.all([
+      // Refresh all RSS feed item caches
+      ...feeds.map((f) =>
         queryClient.invalidateQueries({ queryKey: [`/api/feeds/${f.id}/items`] })
-      )
-    );
+      ),
+      // Sync latest newsletters from IMAP
+      apiRequest("POST", "/api/newsletter/sync").catch(() => {/* silent */}),
+    ]);
+    // Re-fetch feed list so newsletter items appear immediately
+    await queryClient.invalidateQueries({ queryKey: ["/api/feeds"] });
     setTimeout(() => setRefreshing(false), 800);
   };
 
