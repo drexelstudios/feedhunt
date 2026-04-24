@@ -85,7 +85,7 @@ export default function EditFeedDialog({ open, onOpenChange, feed }: EditFeedDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md overflow-hidden" data-testid={`dialog-edit-feed-${feed.id}`}>
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-md overflow-hidden" data-testid={`dialog-edit-feed-${feed.id}`}>
         <DialogHeader>
           <DialogTitle style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}>
             Edit Feed

@@ -163,7 +163,7 @@ export default function FeedCreatorDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-feed-creator">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-feed-creator">
         <DialogHeader>
           <DialogTitle
             className="flex items-center gap-2"

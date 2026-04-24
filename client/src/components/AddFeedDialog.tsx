@@ -117,7 +117,7 @@ export default function AddFeedDialog({ open, onOpenChange, categories, initialU
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-add-feed">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-add-feed">
         <DialogHeader>
           <DialogTitle
             style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}

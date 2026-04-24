@@ -106,7 +106,7 @@ export default function SearchFeedDialog({ open, onOpenChange, categories }: Sea
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" style={{ overflowX: "hidden" }} data-testid="dialog-search-feed">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-y-auto" style={{ overflowX: "hidden" }} data-testid="dialog-search-feed">
         <DialogHeader>
           <DialogTitle
             style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
